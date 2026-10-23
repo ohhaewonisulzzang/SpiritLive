@@ -1,0 +1,3381 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>공포 스피릿 라이브</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nanum+Gothic+Coding:wght@400;700&family=VT323&display=swap" rel="stylesheet">
+  <style>
+/* =========================================================
+ * style.css — 캠코더 / 라이브 방송 느낌의 레트로 호러 스타일
+ * ========================================================= */
+:root {
+  --bg: #07060a;
+  --panel: #110e15;
+  --panel-2: #19131f;
+  --line: #2b2232;
+  --text: #ece5d8;
+  --muted: #8d8396;
+  --accent: #ff7a1a;     /* 할로윈 오렌지 */
+  --rec: #ff2b2b;
+  --live: #e5193b;
+  --ok: #7fe0a0;
+  --donate: #ffd35a;
+  --danger: 200, 0, 20;
+  --font-ui: 'Nanum Gothic Coding', ui-monospace, monospace;
+  --font-cam: 'VT323', ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  min-height: 100vh;
+}
+
+.hidden { display: none !important; }
+
+/* ---------- 레이아웃 ---------- */
+/* 방송 화면(왼쪽, 최대 크기) + 채팅(오른쪽)만. 한 화면에 꽉 차고 스크롤 없음 */
+#app {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(300px, 22vw, 420px);
+  gap: 12px;
+  height: 100vh;
+  padding: 12px;
+}
+
+#stream { min-width: 0; min-height: 0; }
+
+/* ---------- 방송 화면 ---------- */
+#screen {
+  position: relative;
+  width: 100%;
+  height: 100%;                    /* 남는 공간 전부 사용. 게임 화면은 비율 유지(레터박스) */
+  background: #000;
+  border: 1px solid var(--line);
+  overflow: hidden;
+  user-select: none;
+}
+
+#game {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: contrast(1.08) saturate(0.85);
+}
+
+.cam-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  font-family: var(--font-cam);
+  font-size: clamp(16px, 2.6vw, 26px);
+  color: #f3f3f3;
+  text-shadow: 0 0 4px rgba(0, 0, 0, .9);
+}
+
+.corner {
+  position: absolute;
+  width: 6%;
+  aspect-ratio: 1;
+  border: 2px solid rgba(255, 255, 255, .75);
+}
+.corner.tl { top: 4%; left: 3%; border-right: 0; border-bottom: 0; }
+.corner.tr { top: 4%; right: 3%; border-left: 0; border-bottom: 0; }
+.corner.bl { bottom: 4%; left: 3%; border-right: 0; border-top: 0; }
+.corner.br { bottom: 4%; right: 3%; border-left: 0; border-top: 0; }
+
+#rec { position: absolute; top: 6%; left: 6%; letter-spacing: 1px; }
+.rec-dot {
+  display: inline-block;
+  width: .55em; height: .55em;
+  margin-right: .35em;
+  border-radius: 50%;
+  background: var(--rec);
+  box-shadow: 0 0 8px var(--rec);
+  animation: blink 1s steps(1) infinite;
+}
+
+#live-box { position: absolute; top: 6%; right: 6%; display: flex; gap: .5em; align-items: center; }
+.live-badge {
+  background: var(--live);
+  padding: 0 .35em;
+  font-size: .85em;
+  letter-spacing: 1px;
+}
+.viewers b { color: var(--donate); font-weight: normal; }
+
+#battery { position: absolute; bottom: 6%; left: 6%; font-size: .8em; opacity: .85; }
+.batt {
+  display: inline-block;
+  width: 1.6em; height: .7em;
+  border: 1px solid #fff;
+  vertical-align: middle;
+  padding: 1px;
+}
+.batt i { display: block; width: 35%; height: 100%; background: var(--rec); animation: blink 2s steps(1) infinite; }
+
+#room-name { position: absolute; bottom: 6%; right: 6%; font-size: .85em; opacity: .9; }
+
+/* 왼쪽 위 HUD: 현재 목표 + 시청자 미션 */
+#hud-left {
+  position: absolute;
+  top: 12%; left: 6%;
+  max-width: 45%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  font-family: var(--font-ui);
+  font-size: clamp(11px, 1.2vw, 14px);
+}
+#objective,
+#mission-hud {
+  background: rgba(0, 0, 0, .55);
+  border-left: 3px solid var(--accent);
+  padding: .25em .6em;
+}
+#objective { font-weight: 700; color: #ffe2b8; }
+#mission-hud { border-left-color: var(--donate); }
+.mission-head { margin: 0 0 2px; font-size: .85em; color: var(--donate); }
+#mission-list { list-style: none; margin: 0; padding: 0; }
+#mission-list li { display: flex; gap: 6px; line-height: 1.5; color: #e8e0d4; }
+#mission-list li.done { color: var(--ok); text-decoration: line-through; opacity: .75; }
+#mission-list em { color: var(--rec); font-style: normal; }
+#mission-list small { color: #a99fb2; font-size: .85em; }
+
+#cam-capture {
+  position: absolute;
+  top: 13%; left: 50%;
+  transform: translateX(-50%);
+  color: var(--rec);
+  font-size: .9em;
+  animation: blink .5s steps(1) infinite;
+}
+
+#hide-indicator {
+  position: absolute;
+  bottom: 14%; left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, .65);
+  padding: .1em .7em;
+  font-size: .85em;
+  color: #cfd8ff;
+}
+
+#toast {
+  position: absolute;
+  top: 22%; left: 50%;
+  transform: translateX(-50%);
+  max-width: 80%;
+  text-align: center;
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: clamp(13px, 1.8vw, 18px);
+  background: rgba(10, 0, 0, .7);
+  border: 1px solid rgba(255, 60, 60, .5);
+  padding: .4em 1em;
+}
+
+#donation {
+  position: absolute;
+  top: 12%; left: 50%;
+  transform: translateX(-50%);
+  min-width: 55%;
+  max-width: 85%;
+  text-align: center;
+  font-family: var(--font-ui);
+  font-size: clamp(12px, 1.6vw, 16px);
+  background: linear-gradient(180deg, rgba(60, 40, 0, .92), rgba(25, 15, 0, .92));
+  border: 2px solid var(--donate);
+  padding: .6em 1em;
+  animation: pop .35s ease-out;
+}
+.don-head { color: var(--donate); margin-bottom: .3em; }
+#donation-msg { color: #fff; }
+#donation.scare {
+  background: linear-gradient(180deg, rgba(60, 0, 0, .95), rgba(10, 0, 0, .95));
+  border-color: var(--rec);
+  animation: pop .2s ease-out, shiver .08s steps(2) infinite;
+}
+#donation.scare .don-head { color: var(--rec); }
+
+/* 후원 순간 화면 번쩍임 */
+#screen.flash::after,
+#screen.flash-scare::after {
+  content: '';
+  position: absolute; inset: 0;
+  pointer-events: none;
+  animation: flash .6s ease-out forwards;
+}
+#screen.flash::after { background: rgba(255, 211, 90, .55); }
+#screen.flash-scare::after { background: #fff; animation-duration: .9s; mix-blend-mode: difference; }
+
+/* CRT 스캔라인 + 비네트 + 위험 표시 */
+.scanlines {
+  position: absolute; inset: 0;
+  background: repeating-linear-gradient(to bottom, rgba(255,255,255,.035) 0 1px, transparent 1px 3px);
+  mix-blend-mode: overlay;
+}
+.vignette {
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.75) 100%);
+}
+#danger {
+  position: absolute; inset: 0;
+  opacity: 0;
+  background: radial-gradient(ellipse at center, transparent 40%, rgba(var(--danger), .65) 100%);
+  animation: pulse .9s ease-in-out infinite;
+  transition: opacity .3s;
+}
+
+/* ---------- 대화창 ---------- */
+#dialog {
+  position: absolute;
+  left: 4%; right: 4%; bottom: 4%;
+  min-height: 22%;
+  background: rgba(6, 4, 10, .94);
+  border: 2px solid #d9cfc0;
+  box-shadow: 0 0 0 4px rgba(0,0,0,.6);
+  padding: 1.1em 1.3em 1.6em;
+  font-size: clamp(13px, 1.9vw, 18px);
+  line-height: 1.6;
+}
+#dialog-name {
+  position: absolute;
+  top: -1em; left: 1em;
+  background: var(--accent);
+  color: #160800;
+  font-weight: 700;
+  padding: .1em .7em;
+}
+#dialog.narration #dialog-text { color: #c8bfd8; font-style: italic; }
+.dialog-next {
+  position: absolute;
+  right: 1em; bottom: .4em;
+  font-family: var(--font-cam);
+  color: var(--muted);
+  animation: blink 1s steps(1) infinite;
+}
+
+/* ---------- 타이틀 / 엔딩 ---------- */
+.screen-layer {
+  position: absolute; inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: .8em;
+  padding: 5%;
+  text-align: center;
+  background: radial-gradient(ellipse at center, rgba(40, 6, 12, .85), rgba(0, 0, 0, .97));
+}
+.title-kicker { margin: 0; font-family: var(--font-cam); color: var(--accent); letter-spacing: 3px; font-size: clamp(14px, 2vw, 20px); }
+.title-main {
+  position: relative;
+  margin: 0;
+  font-size: clamp(30px, 6.5vw, 64px);
+  color: #f2e9e0;
+  text-shadow: 0 0 18px rgba(255, 40, 40, .55);
+  animation: glitch 3s infinite;
+}
+.title-sub, .title-help { margin: 0; color: var(--muted); font-size: clamp(12px, 1.6vw, 15px); }
+
+button {
+  font-family: var(--font-cam);
+  font-size: clamp(18px, 2.6vw, 26px);
+  color: #fff;
+  background: var(--live);
+  border: 0;
+  padding: .25em 1.2em;
+  cursor: pointer;
+  letter-spacing: 1px;
+}
+button:hover { filter: brightness(1.15); }
+button:focus-visible { outline: 2px solid var(--donate); outline-offset: 3px; }
+
+#ending-tag { margin: 0; font-family: var(--font-cam); letter-spacing: 4px; font-size: clamp(16px, 2.4vw, 24px); }
+#ending-title { margin: 0; font-size: clamp(24px, 4.6vw, 44px); }
+#ending-text { max-width: 36em; color: #d7cfe0; font-size: clamp(12px, 1.7vw, 16px); line-height: 1.7; }
+#ending-text p { margin: .4em 0; }
+#ending-stats {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: .2em 1.2em;
+  margin: 0;
+  font-family: var(--font-cam);
+  font-size: clamp(15px, 2vw, 20px);
+}
+#ending-stats dt { color: var(--muted); text-align: right; }
+#ending-stats dd { margin: 0; text-align: left; }
+#ending-screen.bad #ending-tag { color: var(--rec); }
+#ending-screen.normal #ending-tag { color: var(--accent); }
+#ending-screen.hidden-end #ending-tag { color: var(--donate); }
+#ending-screen.hidden-end { background: radial-gradient(ellipse at center, rgba(70, 50, 10, .8), rgba(0,0,0,.97)); }
+
+/* ---------- 오른쪽 채팅 ---------- */
+#side { min-width: 0; min-height: 0; display: flex; }
+
+/* 좁은 화면: 방송(4:3) 위, 채팅 아래 */
+@media (max-width: 980px) {
+  #app { grid-template-columns: 1fr; height: auto; }
+  #screen { height: auto; aspect-ratio: 4 / 3; }
+  #side { height: 420px; }
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 10px 12px;
+}
+.panel h2 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 1px;
+}
+
+.chat { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+#chat-log {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.5;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+.chat-line { padding: 2px 0; word-break: break-all; animation: fadein .25s; }
+.chat-line .user { font-weight: 700; margin-right: 6px; }
+.chat-line.system { color: var(--muted); font-style: italic; }
+.chat-line.donate {
+  background: rgba(255, 211, 90, .1);
+  border-left: 3px solid var(--donate);
+  padding: 4px 6px;
+  margin: 3px 0;
+  color: var(--donate);
+}
+.chat-line.donate.scare { background: rgba(255, 43, 43, .12); border-color: var(--rec); color: var(--rec); }
+.chat-line.mission { color: var(--ok); }
+
+/* ---------- 애니메이션 ---------- */
+@keyframes blink { 50% { opacity: 0; } }
+@keyframes pulse { 50% { filter: brightness(1.6); } }
+@keyframes pop { from { transform: translateX(-50%) scale(.7); opacity: 0; } }
+@keyframes flash { from { opacity: 1; } to { opacity: 0; } }
+@keyframes shiver { 50% { transform: translateX(calc(-50% + 3px)); } }
+@keyframes fadein { from { opacity: 0; transform: translateY(4px); } }
+@keyframes glitch {
+  0%, 92%, 100% { transform: none; text-shadow: 0 0 18px rgba(255,40,40,.55); }
+  93% { transform: translate(-3px, 1px) skewX(8deg); text-shadow: 3px 0 #f00, -3px 0 #0ff; }
+  95% { transform: translate(3px, -1px); text-shadow: -3px 0 #f00, 3px 0 #0ff; }
+  97% { transform: translate(-1px, 0) skewX(-6deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; }
+}
+</style>
+</head>
+<body>
+  <div id="app">
+    <!-- ===== 방송 화면 ===== -->
+    <section id="stream">
+      <div id="screen">
+        <canvas id="game" width="640" height="480"></canvas>
+
+        <!-- 캠코더 오버레이 -->
+        <div class="cam-overlay">
+          <span class="corner tl"></span><span class="corner tr"></span>
+          <span class="corner bl"></span><span class="corner br"></span>
+
+          <div id="rec"><span class="rec-dot"></span>REC <span id="rec-time">00:00:00</span></div>
+          <div id="live-box">
+            <span class="live-badge">LIVE</span>
+            <span class="viewers">시청자 <b id="viewer-count">1,204</b></span>
+          </div>
+          <div id="battery"><span class="batt"><i></i></span> NIGHT VISION</div>
+          <div id="room-name">1F 현관</div>
+          <!-- 왼쪽 위: 현재 목표 + 시청자 미션 -->
+          <div id="hud-left">
+            <div id="objective"></div>
+            <div id="mission-hud">
+              <p class="mission-head">시청자 미션</p>
+              <ul id="mission-list"></ul>
+            </div>
+          </div>
+
+          <div id="cam-capture" class="hidden">● 괴물 포착중 <span id="cam-progress">0.0</span>s / 3.0s</div>
+          <div id="hide-indicator" class="hidden"></div>
+          <div id="toast" class="hidden"></div>
+
+          <div id="donation" class="hidden">
+            <div class="don-head"><b id="donation-name"></b>님이 <b id="donation-amount"></b> 후원!</div>
+            <div id="donation-msg"></div>
+          </div>
+
+          <div class="scanlines"></div>
+          <div class="vignette"></div>
+          <div id="danger"></div>
+        </div>
+
+        <!-- 대화창 -->
+        <div id="dialog" class="hidden">
+          <div id="dialog-name"></div>
+          <div id="dialog-text"></div>
+          <div class="dialog-next">▼ E / Space</div>
+        </div>
+
+        <!-- 타이틀 -->
+        <div id="title-screen" class="screen-layer">
+          <p class="title-kicker">HALLOWEEN SPECIAL · HORROR LIVE STREAM</p>
+          <h1 class="title-main" data-text="공포 스피릿 라이브">공포 스피릿 라이브</h1>
+          <p class="title-sub">소문의 폐가에서 사라진 친구들을 구하고 탈출하라.</p>
+          <button id="start-btn" type="button">● 방송 시작</button>
+          <p class="title-help">이동 WASD / 방향키 · 조사·숨기 E / Space</p>
+        </div>
+
+        <!-- 엔딩 -->
+        <div id="ending-screen" class="screen-layer hidden">
+          <p id="ending-tag"></p>
+          <h2 id="ending-title"></h2>
+          <div id="ending-text"></div>
+          <dl id="ending-stats"></dl>
+          <button id="retry-btn" type="button">↻ 다시 방송하기 (E)</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 오른쪽: 실시간 채팅 ===== -->
+    <aside id="side">
+      <div class="panel chat">
+        <h2>실시간 채팅</h2>
+        <div id="chat-log"></div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- 로드 순서: 데이터/엔티티 → UI → 메인 루프 -->
+  <script>
+/* ===== js/map.js ===== */
+/* =========================================================
+ * map.js — 맵 데이터 · 타일 렌더링 · 룸 전환 · 충돌/시야/경로 유틸
+ * ========================================================= */
+const TILE = 32;
+const COLS = 20;
+const ROWS = 15;
+
+/*
+ * 타일 범례
+ *  #  벽            .  바닥          D  문(룸 전환)     E  현관문(탈출)
+ *  W  장롱(숨기)    B  침대(숨기)    F  소파(숨기)      X  큰 상자(숨기)
+ *  T  책상/테이블   S  선반/신발장   C  철창            L  잠긴 벽장
+ */
+const TILE_INFO = {
+  '#': { solid: true },
+  '.': { solid: false },
+  'D': { solid: false },
+  'E': { solid: true },
+  'W': { solid: true, hide: '장롱 안' },
+  'B': { solid: true, hide: '침대 밑' },
+  'F': { solid: true, hide: '소파 뒤' },
+  'X': { solid: true, hide: '큰 상자 속' },
+  'T': { solid: true },
+  'S': { solid: true },
+  'C': { solid: true },
+  'L': { solid: true },
+};
+
+/*
+ * doors: rect = [x, y, w, h] (타일 단위), to = 이동할 룸, spawn = 도착 지점(타일, 소수 허용)
+ */
+const ROOMS = {
+  hall: {
+    name: '1F 현관',
+    floor: '#3a2e29',
+    wall: '#24181c',
+    tiles: [
+      '#########DD#########',
+      '#..................#',
+      '#..T...........S...#',
+      '#..................#',
+      '#................W.#',
+      '#..................#',
+      '#..................D',
+      '#..................D',
+      '#..................#',
+      '#....X.............#',
+      '#..................#',
+      '#..................#',
+      '#.S................#',
+      '#..................#',
+      '#########EE#########',
+    ],
+    doors: [
+      { rect: [9, 0, 2, 1], to: 'living', spawn: [9.5, 13] },
+      { rect: [19, 6, 1, 2], to: 'corridor', spawn: [1, 6.5] },
+    ],
+  },
+
+  corridor: {
+    name: '1F 복도',
+    floor: '#302a33',
+    wall: '#1d1621',
+    tiles: [
+      '####################',
+      '####################',
+      '####################',
+      '####################',
+      '#....W.......S.....#',
+      '#..................#',
+      'D..................D',
+      'D..................D',
+      '#..................#',
+      '#....X.......T.....#',
+      '#########DD#########',
+      '####################',
+      '####################',
+      '####################',
+      '####################',
+    ],
+    doors: [
+      { rect: [0, 6, 1, 2], to: 'hall', spawn: [18, 6.5] },
+      { rect: [19, 6, 1, 2], to: 'bedroom', spawn: [1, 6.5] },
+      { rect: [9, 10, 2, 1], to: 'basement', spawn: [9.5, 1] },
+    ],
+  },
+
+  bedroom: {
+    name: '1F 안방',
+    floor: '#3b2a2e',
+    wall: '#26161b',
+    tiles: [
+      '####################',
+      '#..W.....T.......W.#',
+      '#..................#',
+      '#..BB.........SS...#',
+      '#..................#',
+      '#..................#',
+      'D..................#',
+      'D..................#',
+      '#..................#',
+      '#......#####.......#',
+      '#......#...........#',
+      '#......#...X.......#',
+      '#..........B.......#',
+      '#..................#',
+      '####################',
+    ],
+    doors: [
+      { rect: [0, 6, 1, 2], to: 'corridor', spawn: [18, 6.5] },
+    ],
+  },
+
+  basement: {
+    name: 'B1 지하실',
+    floor: '#262a28',
+    wall: '#151917',
+    tiles: [
+      '#########DD#########',
+      '#..................#',
+      '#.X.X..........XX..#',
+      '#..................#',
+      '#..SSS.............#',
+      '#..................#',
+      '#.......####.......#',
+      '#.......#..#.......#',
+      '#.......#..#.......#',
+      '#..................#',
+      '#..X...........C...#',
+      '#..................#',
+      '#.X.........S......#',
+      '#..................#',
+      '####################',
+    ],
+    doors: [
+      { rect: [9, 0, 2, 1], to: 'corridor', spawn: [9.5, 9] },
+    ],
+  },
+
+  living: {
+    name: '1F 거실',
+    floor: '#352b24',
+    wall: '#221713',
+    tiles: [
+      '####################',
+      '#.S....SS.....W....#',
+      '#..................#',
+      '#..................#',
+      '#...TTT............#',
+      '#...TTT.......X....#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..F...............#',
+      '#..............L...#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#########DD#########',
+    ],
+    doors: [
+      { rect: [9, 14, 2, 1], to: 'hall', spawn: [9.5, 1] },
+    ],
+  },
+};
+
+const DIRS4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+const GameMap = {
+  currentId: 'hall',
+  cache: {},
+
+  get room() { return ROOMS[this.currentId]; },
+
+  tileAt(tx, ty, roomId = this.currentId) {
+    if (tx < 0 || ty < 0 || tx >= COLS || ty >= ROWS) return '#';
+    return ROOMS[roomId].tiles[ty][tx];
+  },
+
+  isSolid(tx, ty, roomId = this.currentId) {
+    return TILE_INFO[this.tileAt(tx, ty, roomId)].solid;
+  },
+
+  hideSpotAt(tx, ty, roomId = this.currentId) {
+    return TILE_INFO[this.tileAt(tx, ty, roomId)].hide || null;
+  },
+
+  doorAt(tx, ty, roomId = this.currentId) {
+    return ROOMS[roomId].doors.find(({ rect: [x, y, w, h] }) =>
+      tx >= x && tx < x + w && ty >= y && ty < y + h) || null;
+  },
+
+  /** 픽셀 좌표 두 점 사이에 벽/가구가 없는지 (시작·끝 타일은 무시) */
+  lineOfSight(x0, y0, x1, y1, roomId = this.currentId) {
+    const dist = Math.hypot(x1 - x0, y1 - y0);
+    const steps = Math.ceil(dist / 8);
+    const startTile = `${Math.floor(x0 / TILE)},${Math.floor(y0 / TILE)}`;
+    const endTile = `${Math.floor(x1 / TILE)},${Math.floor(y1 / TILE)}`;
+    for (let i = 1; i < steps; i++) {
+      const t = i / steps;
+      const tx = Math.floor((x0 + (x1 - x0) * t) / TILE);
+      const ty = Math.floor((y0 + (y1 - y0) * t) / TILE);
+      const key = `${tx},${ty}`;
+      if (key === startTile || key === endTile) continue;
+      if (this.isSolid(tx, ty, roomId)) return false;
+    }
+    return true;
+  },
+
+  /** BFS 4방향 경로 탐색. 목표 타일은 solid여도 도달 가능(숨은 가구로 다가갈 때) */
+  findPath(sx, sy, gx, gy, roomId = this.currentId) {
+    if (sx === gx && sy === gy) return [];
+    const idx = (x, y) => y * COLS + x;
+    const start = idx(sx, sy);
+    const goal = idx(gx, gy);
+    const prev = new Int16Array(COLS * ROWS).fill(-1);
+    const queue = [start];
+    prev[start] = start;
+
+    for (let head = 0; head < queue.length; head++) {
+      const k = queue[head];
+      if (k === goal) break;
+      const x = k % COLS;
+      const y = (k / COLS) | 0;
+      for (const [dx, dy] of DIRS4) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS) continue;
+        const nk = idx(nx, ny);
+        if (prev[nk] !== -1) continue;
+        if (nk !== goal && this.isSolid(nx, ny, roomId)) continue;
+        prev[nk] = k;
+        queue.push(nk);
+      }
+    }
+    if (prev[goal] === -1) return null;
+
+    const path = [];
+    for (let k = goal; k !== start; k = prev[k]) path.push([k % COLS, (k / COLS) | 0]);
+    return path.reverse();
+  },
+
+  randomFloorTile(roomId = this.currentId) {
+    const tiles = [];
+    ROOMS[roomId].tiles.forEach((row, y) => {
+      for (let x = 0; x < COLS; x++) if (row[x] === '.') tiles.push([x, y]);
+    });
+    return tiles[(Math.random() * tiles.length) | 0];
+  },
+
+  nearestDoorTile(tx, ty, roomId = this.currentId) {
+    let best = null;
+    let bestDist = Infinity;
+    for (const { rect: [x, y, w, h] } of ROOMS[roomId].doors) {
+      for (let j = y; j < y + h; j++) {
+        for (let i = x; i < x + w; i++) {
+          const d = Math.abs(i - tx) + Math.abs(j - ty);
+          if (d < bestDist) { bestDist = d; best = [i, j]; }
+        }
+      }
+    }
+    return best;
+  },
+
+  /* ---------------- 렌더링 (룸 단위로 오프스크린 캐시) ---------------- */
+
+  getRoomCanvas(roomId = this.currentId) {
+    if (!this.cache[roomId]) this.cache[roomId] = this.renderRoom(roomId);
+    return this.cache[roomId];
+  },
+
+  renderRoom(roomId) {
+    const room = ROOMS[roomId];
+    const c = document.createElement('canvas');
+    c.width = COLS * TILE;
+    c.height = ROWS * TILE;
+    const g = c.getContext('2d');
+    for (let y = 0; y < ROWS; y++) {
+      for (let x = 0; x < COLS; x++) this.drawTile(g, room, roomId, x, y);
+    }
+    return c;
+  },
+
+  drawTile(g, room, roomId, x, y) {
+    const ch = room.tiles[y][x];
+    const px = x * TILE;
+    const py = y * TILE;
+    const n = hash(x, y, roomId.length);
+
+    if (ch === '#') return this.drawWall(g, room, roomId, x, y);
+    this.drawFloor(g, room, px, py, n);
+
+    switch (ch) {
+      case 'D': {
+        g.fillStyle = '#050304';
+        g.fillRect(px + 2, py + 2, TILE - 4, TILE - 4);
+        g.fillStyle = '#4a3020';
+        const vertical = x === 0 || x === COLS - 1;
+        if (vertical) { g.fillRect(px, py, TILE, 2); g.fillRect(px, py + TILE - 2, TILE, 2); }
+        else { g.fillRect(px, py, 2, TILE); g.fillRect(px + TILE - 2, py, 2, TILE); }
+        break;
+      }
+      case 'E':
+        g.fillStyle = '#4e1a16';
+        g.fillRect(px, py, TILE, TILE);
+        g.fillStyle = '#2b0d0b';
+        g.fillRect(px + 3, py + 3, TILE - 6, TILE - 6);
+        g.fillStyle = '#c9a54a';
+        g.fillRect(x % 2 ? px + 4 : px + TILE - 7, py + 14, 3, 4);
+        break;
+      case 'W':
+        g.fillStyle = '#4a2c1a';
+        g.fillRect(px + 1, py - 10, TILE - 2, TILE + 8);
+        g.fillStyle = '#3a2214';
+        g.fillRect(px + 3, py - 7, TILE / 2 - 4, TILE + 2);
+        g.fillRect(px + TILE / 2 + 1, py - 7, TILE / 2 - 4, TILE + 2);
+        g.fillStyle = '#b08a4a';
+        g.fillRect(px + TILE / 2 - 3, py + 8, 2, 4);
+        g.fillRect(px + TILE / 2 + 1, py + 8, 2, 4);
+        break;
+      case 'B':
+        g.fillStyle = '#3b2a20';
+        g.fillRect(px + 1, py + 1, TILE - 2, TILE - 2);
+        g.fillStyle = '#8a8698';
+        g.fillRect(px + 3, py + 9, TILE - 6, TILE - 12);
+        g.fillStyle = '#cfc9d6';
+        g.fillRect(px + 5, py + 3, TILE - 10, 6);
+        break;
+      case 'F':
+        g.fillStyle = '#5e1b22';
+        g.fillRect(px + 1, py + 4, TILE - 2, TILE - 6);
+        g.fillStyle = '#7a2730';
+        g.fillRect(px + 4, py + 10, TILE - 8, TILE - 16);
+        break;
+      case 'X':
+        g.fillStyle = '#8a6a3c';
+        g.fillRect(px + 2, py + 3, TILE - 4, TILE - 5);
+        g.fillStyle = '#6e532d';
+        g.fillRect(px + 2, py + 3, TILE - 4, 4);
+        g.fillStyle = '#b89a5e';
+        g.fillRect(px + TILE / 2 - 2, py + 3, 4, TILE - 5);
+        break;
+      case 'T':
+        g.fillStyle = '#2a1a10';
+        g.fillRect(px + 2, py + 6, TILE - 4, TILE - 6);
+        g.fillStyle = '#5a3a24';
+        g.fillRect(px, py + 2, TILE, TILE - 10);
+        break;
+      case 'S': {
+        g.fillStyle = '#3d2a1e';
+        g.fillRect(px + 1, py - 6, TILE - 2, TILE + 4);
+        const colors = ['#6a2b2b', '#2b4a6a', '#5a5a2b', '#3b2b5a'];
+        for (let i = 0; i < 3; i++) {
+          g.fillStyle = '#24170f';
+          g.fillRect(px + 2, py - 2 + i * 10, TILE - 4, 2);
+          for (let b = 0; b < 4; b++) {
+            if ((n >> (i * 4 + b)) & 1) continue;
+            g.fillStyle = colors[(b + i) % colors.length];
+            g.fillRect(px + 4 + b * 6, py - 7 + i * 10, 4, 5);
+          }
+        }
+        break;
+      }
+      case 'C':
+        g.fillStyle = 'rgba(0,0,0,.35)';
+        g.fillRect(px, py, TILE, TILE);
+        this.drawCageBars(g, px, py);
+        break;
+      case 'L':
+        g.fillStyle = '#2f1d14';
+        g.fillRect(px + 1, py - 8, TILE - 2, TILE + 6);
+        g.strokeStyle = '#8a8a8a';
+        g.lineWidth = 2;
+        g.beginPath();
+        g.moveTo(px + 4, py - 4); g.lineTo(px + TILE - 4, py + TILE - 6);
+        g.moveTo(px + TILE - 4, py - 4); g.lineTo(px + 4, py + TILE - 6);
+        g.stroke();
+        g.fillStyle = '#c9a54a';
+        g.fillRect(px + TILE / 2 - 4, py + 8, 8, 7);
+        break;
+    }
+  },
+
+  drawCageBars(g, px, py) {
+    g.fillStyle = '#7d7d84';
+    g.fillRect(px, py, TILE, 2);
+    g.fillRect(px, py + TILE - 2, TILE, 2);
+    for (let i = 0; i <= 4; i++) g.fillRect(px + i * 7.5, py, 2, TILE);
+  },
+
+  drawFloor(g, room, px, py, n) {
+    g.fillStyle = room.floor;
+    g.fillRect(px, py, TILE, TILE);
+    // 나무 판자 이음새
+    g.fillStyle = 'rgba(0,0,0,.18)';
+    for (let i = 0; i < 4; i++) g.fillRect(px, py + i * 8 + 7, TILE, 1);
+    g.fillRect(px + ((n % 4) * 8), py, 1, TILE);
+    // 얼룩
+    if (n % 7 === 0) {
+      g.fillStyle = 'rgba(70, 0, 0, .25)';
+      g.beginPath();
+      g.ellipse(px + 16, py + 16, 6 + (n % 5), 4, n, 0, Math.PI * 2);
+      g.fill();
+    }
+  },
+
+  drawWall(g, room, roomId, x, y) {
+    const px = x * TILE;
+    const py = y * TILE;
+    const touchesFloor = DIRS4.some(([dx, dy]) => {
+      const t = this.tileAt(x + dx, y + dy, roomId);
+      return t !== '#';
+    });
+    if (!touchesFloor) {
+      g.fillStyle = '#060406';
+      g.fillRect(px, py, TILE, TILE);
+      return;
+    }
+    g.fillStyle = room.wall;
+    g.fillRect(px, py, TILE, TILE);
+    // 벽돌 무늬
+    g.fillStyle = 'rgba(0,0,0,.35)';
+    for (let r = 0; r < 4; r++) {
+      g.fillRect(px, py + r * 8, TILE, 1);
+      const off = r % 2 ? 0 : 8;
+      g.fillRect(px + off, py + r * 8, 1, 8);
+      g.fillRect(px + off + 16, py + r * 8, 1, 8);
+    }
+    // 바닥과 닿는 아래쪽 경계 그림자
+    if (this.tileAt(x, y + 1, roomId) !== '#') {
+      g.fillStyle = 'rgba(255,255,255,.06)';
+      g.fillRect(px, py + TILE - 3, TILE, 3);
+    }
+  },
+};
+
+/** 타일 좌표 기반 고정 난수 (매번 같은 장식이 나오도록) */
+function hash(x, y, seed) {
+  let h = (x * 374761393 + y * 668265263 + seed * 2147483647) | 0;
+  h = (h ^ (h >>> 13)) * 1274126177;
+  return (h ^ (h >>> 16)) >>> 0;
+}
+</script>
+  <script>
+/* ===== js/player.js ===== */
+/* =========================================================
+ * player.js — 플레이어 이동 · 충돌 · 숨기 · 상호작용
+ * ========================================================= */
+class Player {
+  constructor() {
+    this.x = 0;
+    this.y = 0;
+    this.size = 18;          // 충돌 박스 한 변(px)
+    this.speed = 135;        // px/s
+    this.dir = { x: 0, y: -1 };
+    this.lightAngle = -Math.PI / 2;
+    this.moving = false;
+    this.walk = 0;
+
+    this.hidden = false;
+    this.hideSpot = null;    // { tx, ty, label }
+    this.prevPos = null;     // 숨기 직전 위치
+
+    this.inventory = new Set();
+  }
+
+  get tx() { return Math.floor(this.x / TILE); }
+  get ty() { return Math.floor(this.y / TILE); }
+
+  setTile(tx, ty) {
+    this.x = tx * TILE + TILE / 2;
+    this.y = ty * TILE + TILE / 2;
+  }
+
+  has(itemId) { return this.inventory.has(itemId); }
+
+  /* ---------------- 이동 ---------------- */
+
+  update(dt, input) {
+    if (this.hidden) { this.moving = false; return; }
+
+    const dx = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+    const dy = (input.down ? 1 : 0) - (input.up ? 1 : 0);
+    this.moving = dx !== 0 || dy !== 0;
+
+    if (this.moving) {
+      this.updateFacing(dx, dy);
+      const step = (this.speed * dt) / Math.hypot(dx, dy);
+      this.moveAxis(dx * step, 0);
+      this.moveAxis(0, dy * step);
+      this.walk += dt;
+    }
+
+    // 손전등 방향은 부드럽게 회전
+    const target = Math.atan2(this.dir.y, this.dir.x);
+    const diff = Math.atan2(Math.sin(target - this.lightAngle), Math.cos(target - this.lightAngle));
+    this.lightAngle += diff * Math.min(1, dt * 12);
+  }
+
+  updateFacing(dx, dy) {
+    const sx = Math.sign(dx);
+    const sy = Math.sign(dy);
+    if (sx && !sy) this.dir = { x: sx, y: 0 };
+    else if (sy && !sx) this.dir = { x: 0, y: sy };
+    else if (this.dir.x !== sx && this.dir.y !== sy) this.dir = { x: sx, y: 0 };
+  }
+
+  moveAxis(mx, my) {
+    if (!mx && !my) return;
+    if (!this.collides(this.x + mx, this.y + my)) {
+      this.x += mx;
+      this.y += my;
+      return;
+    }
+    // 막히면 벽에 붙을 때까지 1px씩 전진
+    const sx = Math.sign(mx);
+    const sy = Math.sign(my);
+    for (let n = Math.ceil(Math.abs(mx + my)); n > 0; n--) {
+      if (this.collides(this.x + sx, this.y + sy)) break;
+      this.x += sx;
+      this.y += sy;
+    }
+  }
+
+  collides(x, y) {
+    const h = this.size / 2;
+    const corners = [[x - h, y - h], [x + h - 0.01, y - h], [x - h, y + h - 0.01], [x + h - 0.01, y + h - 0.01]];
+    return corners.some(([cx, cy]) => GameMap.isSolid(Math.floor(cx / TILE), Math.floor(cy / TILE)));
+  }
+
+  facingTile() {
+    return { x: this.tx + this.dir.x, y: this.ty + this.dir.y };
+  }
+
+  /* ---------------- 상호작용 / 숨기 ---------------- */
+
+  tryInteract(game) {
+    if (this.hidden) return this.unhide(game);
+
+    const front = this.facingTile();
+    // 1) 퀘스트 오브젝트 (정면 → 발밑 순)
+    if (Quest.interact(front.x, front.y, game)) return;
+    if (Quest.interact(this.tx, this.ty, game)) return;
+    // 2) 숨을 수 있는 가구
+    const label = GameMap.hideSpotAt(front.x, front.y);
+    if (label) this.hide(front.x, front.y, label, game);
+  }
+
+  hide(tx, ty, label, game) {
+    this.hidden = true;
+    this.hideSpot = { tx, ty, label };
+    this.prevPos = { x: this.x, y: this.y };
+    this.x = tx * TILE + TILE / 2;
+    this.y = ty * TILE + TILE / 2;
+    UI.onHide(label);
+    game.monster.onPlayerHide(this);
+  }
+
+  unhide() {
+    this.hidden = false;
+    this.x = this.prevPos.x;
+    this.y = this.prevPos.y;
+    this.hideSpot = null;
+    UI.onUnhide();
+  }
+
+  /* ---------------- 그리기 ---------------- */
+
+  draw(ctx) {
+    if (this.hidden) return;
+    const x = Math.round(this.x);
+    const bob = this.moving ? Math.abs(Math.sin(this.walk * 12)) * 2 : 0;
+    const y = Math.round(this.y - bob);
+    const step = this.moving ? Math.sin(this.walk * 12) * 2 : 0;
+
+    // 그림자
+    ctx.fillStyle = 'rgba(0,0,0,.45)';
+    ctx.beginPath();
+    ctx.ellipse(x, this.y + 10, 9, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 다리
+    ctx.fillStyle = '#1f2433';
+    ctx.fillRect(x - 6, y + 4 + step, 5, 7);
+    ctx.fillRect(x + 1, y + 4 - step, 5, 7);
+
+    // 몸통 (할로윈 오렌지 후드티)
+    ctx.fillStyle = '#d9731f';
+    ctx.fillRect(x - 8, y - 6, 16, 12);
+    ctx.fillStyle = '#a8551a';
+    ctx.fillRect(x - 8, y + 3, 16, 3);
+
+    // 머리
+    ctx.fillStyle = '#efc8a0';
+    ctx.fillRect(x - 6, y - 17, 12, 11);
+    ctx.fillStyle = '#2b1d14';
+    ctx.fillRect(x - 7, y - 19, 14, 5);
+    if (this.dir.y < 0) ctx.fillRect(x - 6, y - 15, 12, 7); // 뒷모습
+    else {
+      ctx.fillStyle = '#111';
+      const ex = this.dir.x * 2;
+      ctx.fillRect(x - 4 + ex, y - 12, 2, 2);
+      ctx.fillRect(x + 2 + ex, y - 12, 2, 2);
+    }
+
+    // 캠코더 (바라보는 방향)
+    const cx = x + this.dir.x * 9;
+    const cy = y - 2 + this.dir.y * 6;
+    ctx.fillStyle = '#151515';
+    ctx.fillRect(cx - 3, cy - 3, 7, 6);
+    ctx.fillStyle = '#ff2b2b';
+    ctx.fillRect(cx, cy - 2, 1, 1);
+  }
+}
+</script>
+  <script>
+/* ===== js/monster.js ===== */
+/* =========================================================
+ * monster.js — 괴물 AI (추격 · 수색 · 퇴장 · 붙잡기) / 룸 추적 / 충돌
+ *
+ *  상태 흐름
+ *   (출현) ──▶ chase ──(플레이어가 몰래 숨음)──▶ search ──(시간 초과)──▶ leave ──▶ (퇴장)
+ *                │                                 │  │
+ *                │(숨는 장면을 들킴)                 │  │(40%: 마지막 위치 도착)
+ *                ▼                                 │  ▼
+ *              grab ──(숨은 곳 도착)──────────────────▶ check = 심장박동 미니게임
+ *                                                  │     ├ 성공 → leave
+ *                                   (숨기 해제 후 발각)│     └ 실패 → 끌려나와 잡힘
+ *                                                  ▼
+ *                                                chase
+ * ========================================================= */
+const MONSTER_BASE_SPEED = 112;
+const CATCH_RADIUS = 22;
+const SIGHT_RANGE = TILE * 8;
+const SPOT_HIDING_RANGE = TILE * 4;  // 이 거리 안에서 숨는 걸 보면 들킴
+const FOLLOW_DELAY = 1.6;            // 문을 지나간 뒤 괴물이 따라 들어오기까지(초)
+const CHECK_BEATS_SEEN = 12;         // 숨는 걸 들켰을 때 심장박동 수 (어려움)
+const CHECK_BEATS_SEARCH = 6;        // 수색 중 우연히 조사할 때 (쉬움)
+const CHECK_CHANCE = 0.4;            // 못 봤어도 숨은 곳을 열어볼 확률
+
+class Monster {
+  constructor() {
+    this.active = false;
+    this.roomId = null;
+    this.x = 0;
+    this.y = 0;
+    this.state = 'idle';
+    this.path = [];
+    this.repathTimer = 0;
+    this.stateTimer = 0;
+    this.waitTimer = 0;
+    this.chaseTime = 0;
+    this.pending = null;     // { roomId, tx, ty, timer } — 출현/추적 예약
+    this.anim = 0;
+    this.moving = false;
+    this.look = { x: 0, y: 1 };
+  }
+
+  get tx() { return Math.floor(this.x / TILE); }
+  get ty() { return Math.floor(this.y / TILE); }
+
+  /** 이벤트용 출현 예약 */
+  spawn(roomId, tx, ty, delay = 0) {
+    this.pending = { roomId, tx, ty, timer: delay };
+  }
+
+  appear(roomId, tx, ty, player) {
+    this.active = true;
+    this.roomId = roomId;
+    this.x = tx * TILE + TILE / 2;
+    this.y = ty * TILE + TILE / 2;
+    this.path = [];
+    UI.onMonsterAppear();
+    Game.shake = 0.5;
+    if (player.hidden) this.startSearch(player);
+    else this.startChase();
+  }
+
+  despawn() {
+    this.active = false;
+    this.state = 'idle';
+    this.path = [];
+  }
+
+  /* ---------------- 외부 이벤트 ---------------- */
+
+  /** 플레이어가 문을 지나 다른 룸으로 갔을 때 */
+  onPlayerChangeRoom(roomId, spawn) {
+    const chasing = this.active && (this.state === 'chase' || this.state === 'grab');
+    if (chasing || this.pending) {
+      const timer = this.pending ? Math.max(this.pending.timer, 1) : FOLLOW_DELAY;
+      this.despawn();
+      this.pending = { roomId, tx: spawn[0], ty: spawn[1], timer };
+      if (chasing) UI.toast('뒤에서 문이 벌컥 열리는 소리가...!');
+    } else if (this.active) {
+      this.despawn();
+    }
+  }
+
+  onPlayerHide(player) {
+    if (!this.active || this.roomId !== GameMap.currentId) return;
+    if (this.state !== 'chase') return;
+
+    const p = player.prevPos;
+    const seen = Math.hypot(p.x - this.x, p.y - this.y) < SPOT_HIDING_RANGE &&
+      GameMap.lineOfSight(this.x, this.y, p.x, p.y, this.roomId);
+
+    if (seen) {
+      // 숨는 걸 봤다: 곧장 숨은 곳으로 와서 조사 (박동 많음 = 어려움)
+      this.state = 'grab';
+      const last = player.prevPos;
+      this.path = GameMap.findPath(this.tx, this.ty, Math.floor(last.x / TILE), Math.floor(last.y / TILE), this.roomId) || [];
+      UI.toast('……숨는 걸 봤다. 놈이 곧장 다가온다!!');
+    } else {
+      this.startSearch(player);
+    }
+  }
+
+  /* ---------------- 상태 전환 ---------------- */
+
+  startChase() {
+    this.state = 'chase';
+    this.chaseTime = 0;
+    this.repathTimer = 0;
+  }
+
+  startSearch(player) {
+    this.state = 'search';
+    this.stateTimer = 6 + Math.random() * 3;
+    this.waitTimer = 0.8;
+    // 못 봤어도 가끔은 마지막 위치 근처의 숨을 곳을 열어본다
+    this.willCheck = !!player.hidden && Math.random() < CHECK_CHANCE;
+    // 플레이어가 마지막으로 서 있던 곳부터 뒤진다
+    const last = player.prevPos || player;
+    this.path = GameMap.findPath(this.tx, this.ty, Math.floor(last.x / TILE), Math.floor(last.y / TILE), this.roomId) || [];
+  }
+
+  startLeave() {
+    this.state = 'leave';
+    const door = GameMap.nearestDoorTile(this.tx, this.ty, this.roomId);
+    this.path = door ? GameMap.findPath(this.tx, this.ty, door[0], door[1], this.roomId) || [] : [];
+  }
+
+  /* ---------------- 업데이트 ---------------- */
+
+  update(dt, player, game) {
+    if (this.pending) {
+      this.pending.timer -= dt;
+      if (this.pending.timer <= 0) {
+        const { roomId, tx, ty } = this.pending;
+        this.pending = null;
+        if (roomId === GameMap.currentId) this.appear(roomId, tx, ty, player);
+      }
+    }
+    if (!this.active) return;
+
+    this.anim += dt;
+    this.moving = false;
+
+    switch (this.state) {
+      case 'chase': this.updateChase(dt, player, game); break;
+      case 'search': this.updateSearch(dt, player); break;
+      case 'grab': this.updateGrab(dt, player); break;
+      case 'check': break; // 미니게임 진행 중에는 숨은 곳 앞에 멈춰 선다
+      case 'leave': this.updateLeave(dt); break;
+    }
+  }
+
+  updateChase(dt, player, game) {
+    this.chaseTime += dt;
+    const speed = MONSTER_BASE_SPEED + Math.min(18, this.chaseTime * 0.6);
+    const dist = Math.hypot(player.x - this.x, player.y - this.y);
+
+    if (dist < TILE * 1.3 && GameMap.lineOfSight(this.x, this.y, player.x, player.y, this.roomId)) {
+      // 근접: 직선으로 덮친다
+      this.moveToward(player.x, player.y, speed * dt);
+      this.path = [];
+    } else {
+      this.repathTimer -= dt;
+      if (this.repathTimer <= 0 || !this.path.length) {
+        this.path = GameMap.findPath(this.tx, this.ty, player.tx, player.ty, this.roomId) || [];
+        this.repathTimer = 0.25;
+      }
+      this.followPath(speed * dt);
+    }
+
+    if (Math.hypot(player.x - this.x, player.y - this.y) < CATCH_RADIUS) game.onCaught();
+  }
+
+  updateSearch(dt, player) {
+    if (this.canSee(player)) {
+      this.startChase();
+      UI.toast('들켰다!! 도망쳐!');
+      return;
+    }
+    // 조사하러 가는 중에는 수색 시간을 깎지 않는다 (도착 전에 포기하지 않도록)
+    if (!this.willCheck) this.stateTimer -= dt;
+    if (this.stateTimer <= 0) return this.startLeave();
+
+    // 마지막 위치에 도착 → 숨은 곳 조사 (박동 적음 = 쉬움)
+    if (this.willCheck && !this.path.length && player.hidden) {
+      this.willCheck = false;
+      return this.startCheck(player, CHECK_BEATS_SEARCH);
+    }
+
+    if (this.path.length) {
+      this.followPath(MONSTER_BASE_SPEED * 0.55 * dt);
+    } else {
+      this.waitTimer -= dt;
+      if (this.waitTimer <= 0) {
+        const [gx, gy] = GameMap.randomFloorTile(this.roomId);
+        this.path = GameMap.findPath(this.tx, this.ty, gx, gy, this.roomId) || [];
+        this.waitTimer = 0.6 + Math.random() * 1.2;
+      }
+    }
+  }
+
+  updateGrab(dt, player) {
+    this.followPath(MONSTER_BASE_SPEED * 1.1 * dt);
+    if (!this.path.length) this.startCheck(player, CHECK_BEATS_SEEN);
+  }
+
+  /** 숨은 곳 앞에 서서 조사 → 심장박동 미니게임. 성공하면 포기하고 떠남, 실패하면 끌어냄 */
+  startCheck(player, beats) {
+    this.state = 'check';
+    this.path = [];
+    const spot = player.hideSpot;
+    this.setLook(spot.tx * TILE + TILE / 2 - this.x, spot.ty * TILE + TILE / 2 - this.y);
+    this.moving = false;
+    Heartbeat.start(beats, ok => {
+      if (ok) {
+        this.startLeave();
+        UI.toast('……놈이 고개를 돌렸다. 들키지 않았다.');
+        UI.addViewers(1500);
+        UI.chat(pick(CHAT_USERS), '와 심장 멎는 줄 ㅋㅋㅋㅋㅋ 살았다');
+      } else {
+        player.unhide();
+        Game.onCaught();
+      }
+    });
+  }
+
+  updateLeave(dt) {
+    this.followPath(MONSTER_BASE_SPEED * 0.7 * dt);
+    if (!this.path.length) {
+      this.despawn();
+      UI.onMonsterLeave();
+    }
+  }
+
+  canSee(player) {
+    if (player.hidden) return false;
+    const dist = Math.hypot(player.x - this.x, player.y - this.y);
+    return dist < SIGHT_RANGE && GameMap.lineOfSight(this.x, this.y, player.x, player.y, this.roomId);
+  }
+
+  /* ---------------- 이동 ---------------- */
+
+  followPath(budget) {
+    while (budget > 0 && this.path.length) {
+      const [tx, ty] = this.path[0];
+      const cx = tx * TILE + TILE / 2;
+      const cy = ty * TILE + TILE / 2;
+      const d = Math.hypot(cx - this.x, cy - this.y);
+      if (d <= budget) {
+        this.setLook(cx - this.x, cy - this.y);
+        this.x = cx;
+        this.y = cy;
+        budget -= d;
+        this.path.shift();
+      } else {
+        this.moveToward(cx, cy, budget);
+        budget = 0;
+      }
+    }
+  }
+
+  moveToward(tx, ty, step) {
+    const dx = tx - this.x;
+    const dy = ty - this.y;
+    const d = Math.hypot(dx, dy);
+    if (d < 0.001) return;
+    const s = Math.min(step, d);
+    this.x += (dx / d) * s;
+    this.y += (dy / d) * s;
+    this.setLook(dx, dy);
+  }
+
+  setLook(dx, dy) {
+    const d = Math.hypot(dx, dy);
+    if (d < 0.001) return;
+    this.look = { x: dx / d, y: dy / d };
+    this.moving = true;
+  }
+
+  /* ---------------- 그리기 ---------------- */
+
+  /**
+   * 머리 위치·기울기. 평소엔 미세하게 흔들리다가 불규칙하게 "까딱" 꺾인다 (사람이 아닌 움직임)
+   */
+  headPose() {
+    const t = this.anim;
+    const tick = Math.floor(t * 2.3);
+    const r = hash(tick, 11, 5);
+    const jerk = r % 3 === 0;                       // 3박자에 한 번꼴로 경련
+    return {
+      x: Math.round(this.x) + (jerk ? (r % 5) - 2 : 0),
+      y: Math.round(this.y + Math.sin(t * 5) * 1) - 31,
+      tilt: Math.sin(t * 1.3) * 0.08 + (jerk ? (((r >> 4) % 7) - 3) * 0.12 : 0),
+    };
+  }
+
+  draw(ctx) {
+    if (!this.active) return;
+    const t = this.anim;
+    const x = Math.round(this.x);
+    const y = Math.round(this.y + Math.sin(t * 5) * 1);
+    // 다리를 절듯 엇박자로 움직임
+    const step = this.moving ? Math.sin(t * 11) * 3 : 0;
+    const limp = this.moving ? Math.max(0, Math.sin(t * 5.5)) * 2 : 0;
+
+    ctx.fillStyle = 'rgba(0,0,0,.55)';
+    ctx.beginPath();
+    ctx.ellipse(x, this.y + 15, 13, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 앙상하고 긴 다리
+    ctx.fillStyle = '#2b303b';
+    ctx.fillRect(x - 6, y + 2 + step, 4, 13 - limp);
+    ctx.fillRect(x + 2, y + 2 - step, 4, 13);
+
+    // 구부정한 몸통 (찢어진 옷자락 + 드러난 갈비뼈)
+    ctx.fillStyle = '#3c4350';
+    ctx.fillRect(x - 8, y - 15, 16, 19);
+    ctx.fillStyle = '#2b303b';
+    for (let i = 0; i < 4; i++) ctx.fillRect(x - 8 + i * 4, y + 3, 2, 2 + ((i * 7) % 3));
+    ctx.fillStyle = 'rgba(200,205,215,.18)';
+    for (let i = 0; i < 3; i++) ctx.fillRect(x - 5, y - 11 + i * 4, 10, 1);
+
+    // 무릎까지 늘어진 팔 + 갈고리 손가락
+    const sway = Math.sin(t * 3) * 2;
+    ctx.fillStyle = '#6b7586';
+    ctx.fillRect(x - 12, y - 14, 3, 24 + sway);
+    ctx.fillRect(x + 9, y - 14, 3, 24 - sway);
+    ctx.fillStyle = '#c9cfd6';
+    for (let i = 0; i < 3; i++) {
+      ctx.fillRect(x - 13 + i * 1.5, y + 10 + sway, 1, 4 + (i % 2));
+      ctx.fillRect(x + 9 + i * 1.5, y + 10 - sway, 1, 4 + ((i + 1) % 2));
+    }
+
+    // 가는 목
+    ctx.fillStyle = '#6b7586';
+    ctx.fillRect(x - 2, y - 20, 4, 6);
+
+    // 머리 (기울어진 채로)
+    const h = this.headPose();
+    ctx.save();
+    ctx.translate(h.x, h.y);
+    ctx.rotate(h.tilt);
+    // 핏기 없는 회청색 피부
+    ctx.fillStyle = '#8a94a3';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 10, 13, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#a9b2bd';
+    ctx.beginPath();
+    ctx.ellipse(-1, -3, 7, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // 금
+    ctx.fillStyle = '#2a2f38';
+    ctx.fillRect(2, -12, 1, 4);
+    ctx.fillRect(3, -8, 1, 3);
+    ctx.fillRect(-6, -9, 1, 3);
+    // 짝짝이 눈구멍 (검게 꺼짐)
+    ctx.fillStyle = '#050506';
+    ctx.beginPath();
+    ctx.ellipse(-4, -2, 3.2, 2.8, 0, 0, Math.PI * 2);
+    ctx.ellipse(4.5, -3, 2.6, 3.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // 피눈물
+    ctx.fillStyle = '#7a0b12';
+    ctx.fillRect(-5, 0, 1, 6);
+    ctx.fillRect(5, 0, 1, 4);
+    // 귀까지 꿰맨 입
+    ctx.fillStyle = '#160609';
+    for (let i = -8; i <= 8; i++) ctx.fillRect(i, 6 - Math.round((i / 8) ** 2 * 3), 1, 2);
+    ctx.fillStyle = '#d8d0c0';
+    for (let i = -6; i <= 6; i += 3) ctx.fillRect(i, 5 - Math.round((i / 8) ** 2 * 3), 1, 4);
+    ctx.restore();
+  }
+
+  /** 어둠 레이어 위에 그려서 눈만은 항상 보이게: 검은 눈구멍 속 바늘 같은 동공 */
+  drawEyes(ctx) {
+    if (!this.active) return;
+    const h = this.headPose();
+    const lx = Math.round(this.look.x);
+    const ly = Math.round(this.look.y);
+    ctx.save();
+    ctx.translate(h.x, h.y);
+    ctx.rotate(h.tilt);
+    ctx.shadowColor = 'rgba(255, 40, 40, .9)';
+    ctx.shadowBlur = 6;
+    ctx.fillStyle = '#f4f1e8';
+    ctx.fillRect(-4 + lx, -2 + ly, 1.5, 1.5);
+    ctx.fillRect(4 + lx, -3 + ly, 1.5, 1.5);
+    ctx.restore();
+  }
+
+  /**
+   * 잡혔을 때 화면 가득 띄울 얼굴 (64x64 픽셀아트, 확대해서 사용)
+   *  stare: 귀까지 꿰맨 입, 짝짝이 눈구멍, 피눈물
+   *  scream: 실밥이 뜯기며 턱이 찢어져 열림, 바늘 이빨, 핏발
+   */
+  static face(screaming) {
+    const key = screaming ? 'faceScream' : 'faceStare';
+    if (Monster[key]) return Monster[key];
+    const S = 64;
+    const c = document.createElement('canvas');
+    c.width = S;
+    c.height = S;
+    const g = c.getContext('2d');
+    const px = (x, y, color, w = 1, h = 1) => { g.fillStyle = color; g.fillRect(x, y, w, h); };
+    const dots = (pts, color) => pts.forEach(([x, y]) => px(x, y, color));
+    const inEllipse = (x, y, cx, cy, rx, ry) => ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1;
+    const SKIN = ['#d3d8de', '#b4bcc6', '#949eac', '#747f90', '#555e6e', '#3a414e'];
+
+    // 1) 길쭉하고 턱이 좁아지는 머리. 가장자리로 갈수록 어둡게 + 반점 질감
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const rx = 23 - Math.max(0, y - 38) * 0.35;
+        const d = ((x - 32) / rx) ** 2 + ((y - 31) / 30) ** 2;
+        if (d > 1) continue;
+        const n = hash(x, y, 9) % 100;
+        let shade = Math.min(SKIN.length - 1, Math.floor(d * 3.2 + (n < 12 ? 1 : 0)));
+        if (n > 96) shade = Math.min(SKIN.length - 1, shade + 2); // 검버섯
+        px(x, y, SKIN[shade]);
+      }
+    }
+
+    // 2) 이마에서 뻗은 금 + 관자놀이 핏줄
+    dots([[33, 3], [33, 4], [34, 5], [34, 6], [33, 7], [33, 8], [34, 9], [35, 10], [35, 11], [36, 12], [36, 13]], '#1d2129');
+    dots([[35, 6], [36, 5], [37, 5], [38, 4]], '#1d2129');
+    dots([[24, 5], [24, 6], [23, 7], [23, 8], [22, 9]], '#1d2129');
+    dots([[12, 20], [13, 21], [13, 22], [12, 23], [12, 24], [13, 25]], '#4b2a52');
+    dots([[51, 18], [50, 19], [50, 20], [51, 21], [51, 22], [50, 23]], '#4b2a52');
+
+    // 3) 짝짝이로 꺼진 눈구멍 (왼쪽은 낮고 넓게, 오른쪽은 높고 길게)
+    const sockets = screaming ? [[21, 27, 8, 7], [43, 24, 7, 8]] : [[21, 27, 7, 6], [43, 24, 6, 7]];
+    for (const [cx, cy, rx, ry] of sockets) {
+      for (let y = cy - ry - 2; y <= cy + ry + 2; y++) {
+        for (let x = cx - rx - 2; x <= cx + rx + 2; x++) {
+          if (inEllipse(x, y, cx, cy, rx, ry)) px(x, y, '#030304');
+          else if (inEllipse(x, y, cx, cy, rx + 1.2, ry + 1.2)) px(x, y, '#3a0a0e');
+        }
+      }
+    }
+    // 바늘 같은 동공 (살짝 사시)
+    px(21, 27, '#ff3b3b', 2, 2);
+    px(21, 27, '#f4f1e8');
+    px(42, 25, '#ff3b3b', 2, 2);
+    px(43, 25, '#f4f1e8');
+    if (screaming) {
+      dots([[12, 22], [11, 21], [10, 21], [13, 32], [12, 33], [11, 34], [29, 22], [30, 21]], '#a3121f');
+      dots([[51, 20], [52, 19], [53, 19], [50, 31], [51, 32], [36, 18], [35, 17]], '#a3121f');
+    }
+
+    // 4) 피눈물
+    for (let y = 33; y < 47; y++) px(19 + (y > 40 ? 1 : 0), y, y > 43 ? '#4a0509' : '#7a0b12');
+    for (let y = 32; y < 41; y++) px(44, y, '#7a0b12');
+    px(43, 41, '#4a0509', 1, 2);
+
+    // 5) 콧구멍 두 줄
+    px(29, 36, '#1d2129', 1, 3);
+    px(34, 36, '#1d2129', 1, 3);
+
+    if (!screaming) {
+      // 6a) 귀까지 째진 입을 실로 꿰맴. 입꼬리는 웃는 것처럼 올라감
+      for (let x = 10; x <= 54; x++) {
+        const y = 47 - Math.round(((x - 32) / 22) ** 2 * 8);
+        px(x, y, '#160609', 1, 2);
+        if (x % 4 === 0) px(x, y - 2, '#d8d0c0', 1, 6);                 // 실밥
+        if (x % 4 === 2 && x > 14 && x < 50) px(x, y + 1, '#e6dfcc');   // 틈새로 보이는 이
+      }
+    } else {
+      // 6b) 실밥이 뜯기며 턱이 찢어져 열림
+      for (let y = 36; y < S; y++) {
+        for (let x = 10; x < 54; x++) {
+          if (!inEllipse(x, y, 32, 50, 17, 14)) continue;
+          px(x, y, inEllipse(x, y, 32, 54, 9, 8) ? '#5a0a12' : '#140205');
+        }
+      }
+      // 위아래 바늘 이빨 (길이 제각각)
+      for (let x = 17; x <= 47; x += 2) {
+        const top = 37 + Math.round(((x - 32) / 17) ** 2 * 8);
+        const len = 3 + (hash(x, 1, 4) % 4);
+        for (let i = 0; i < len; i++) px(x, top + i, i === len - 1 ? '#b8ae98' : '#e6dfcc');
+        const bot = 63 - Math.round(((x - 32) / 17) ** 2 * 8);
+        const blen = 2 + (hash(x, 2, 4) % 4);
+        for (let i = 0; i < blen; i++) px(x, bot - i, '#e6dfcc');
+      }
+      // 입꼬리부터 뺨까지 찢어진 살 + 뜯긴 실밥
+      dots([[14, 44], [13, 43], [12, 42], [11, 41], [10, 40], [9, 39]], '#7a0b12');
+      dots([[50, 44], [51, 43], [52, 42], [53, 41], [54, 40], [55, 39]], '#7a0b12');
+      [[15, 40], [20, 38], [44, 38], [49, 40]].forEach(([x, y]) => px(x, y, '#d8d0c0', 1, 3));
+      // 턱에서 떨어지는 피
+      px(28, 63, '#7a0b12');
+      px(36, 62, '#7a0b12', 1, 2);
+    }
+
+    Monster[key] = c;
+    return c;
+  }
+}
+</script>
+  <script>
+/* ===== js/heartbeat.js ===== */
+/* =========================================================
+ * heartbeat.js — 숨은 곳을 괴물이 조사할 때의 심장박동 미니게임
+ *  (DOORS의 Figure 하트비트 미니게임 방식)
+ *
+ *  - 화면 아래 가운데 심장으로 파란 왼쪽 반쪽 / 빨간 오른쪽 반쪽이 양옆에서 다가온다
+ *  - 반쪽이 심장과 겹치는 순간 Q(왼쪽) / E(오른쪽)
+ *  - 박동은 두 개씩 짝지어 오고 점점 빨라진다
+ *  - 틀린 키·타이밍·놓침 = 실수. 실수가 HB_MAX_MISTAKES번이면 끌려나감 → 사망
+ *  - 끝까지 버티면 괴물이 포기하고 떠난다
+ * ========================================================= */
+const HB_WINDOW = 0.14;       // 판정 허용 오차(초)
+const HB_MAX_MISTAKES = 2;    // DOORS와 동일: 두 번 틀리면 끝
+const HB_LEAD_IN = 1.4;       // 첫 박동까지 준비 시간
+
+// 7x6 픽셀 하트. 왼쪽 반쪽 = 0~3열, 오른쪽 반쪽 = 3~6열
+const HEART = [
+  '.XX.XX.',
+  'XXXXXXX',
+  'XXXXXXX',
+  '.XXXXX.',
+  '..XXX..',
+  '...X...',
+];
+
+const Heartbeat = {
+  active: false,
+  beats: [],
+  time: 0,
+  mistakes: 0,
+  flash: { L: 0, R: 0 },
+  pulse: 0,
+  onDone: null,
+
+  /** count: 박동 수 (많을수록 어려움), onDone(성공 여부) */
+  start(count, onDone) {
+    this.active = true;
+    this.time = 0;
+    this.mistakes = 0;
+    this.flash = { L: 0, R: 0 };
+    this.pulse = 0;
+    this.onDone = onDone;
+    this.beats = [];
+
+    const patterns = [['L', 'R'], ['R', 'L'], ['L', 'L'], ['R', 'R']];
+    let t = HB_LEAD_IN;
+    for (let i = 0; i < count; i += 2) {
+      const k = i / Math.max(1, count - 2);            // 0 → 1 진행도
+      const pair = patterns[(Math.random() * patterns.length) | 0];
+      const gap = 0.32 - k * 0.1;                       // 짝 안의 간격 (두-근)
+      const travel = 1.0 - k * 0.35;                    // 반쪽이 날아오는 시간 (점점 빨라짐)
+      pair.slice(0, count - i).forEach((side, j) => {
+        this.beats.push({ side, at: t + j * gap, travel, judged: false, sounded: false });
+      });
+      t += 1.15 - k * 0.45;                             // 다음 짝까지
+    }
+    UI.toast('놈이 숨은 곳을 살핀다… 박자에 맞춰 Q / E', 2.5);
+  },
+
+  update(dt, input) {
+    if (!this.active) return;
+    this.time += dt;
+    this.flash.L = Math.max(0, this.flash.L - dt);
+    this.flash.R = Math.max(0, this.flash.R - dt);
+    this.pulse = Math.max(0, this.pulse - dt * 4);
+
+    // 입력 판정
+    for (const [code, side] of [['KeyQ', 'L'], ['KeyE', 'R']]) {
+      if (!input.wasPressed(code)) continue;
+      const target = this.beats.find(b => !b.judged && Math.abs(b.at - this.time) <= HB_WINDOW);
+      if (target && target.side === side) {
+        target.judged = true;
+        this.pulse = 1;
+        Sound.heartHit();
+      } else {
+        if (target) target.judged = true; // 반대쪽 키를 누름 → 그 박동도 날아감
+        this.mistake(side);
+      }
+    }
+
+    for (const b of this.beats) {
+      // 박동 순간 "두근" (리듬 가이드)
+      if (!b.sounded && this.time >= b.at) {
+        b.sounded = true;
+        Sound.heartThump();
+      }
+      // 놓침
+      if (!b.judged && this.time > b.at + HB_WINDOW) {
+        b.judged = true;
+        this.mistake(b.side);
+      }
+    }
+
+    if (this.mistakes >= HB_MAX_MISTAKES) this.finish(false);
+    else if (this.beats.every(b => b.judged)) this.finish(true);
+  },
+
+  mistake(side) {
+    this.mistakes++;
+    this.flash[side] = 0.4;
+    Game.shake = Math.max(Game.shake, 0.25);
+    Sound.heartMiss();
+  },
+
+  finish(ok) {
+    this.active = false;
+    const cb = this.onDone;
+    this.onDone = null;
+    if (cb) cb(ok);
+  },
+
+  /* ---------------- 그리기 (화면 좌표) ---------------- */
+
+  draw(ctx, W, H) {
+    if (!this.active) return;
+    const cx = W / 2;
+    const cy = H - 78;
+    const px = 7;                    // 하트 픽셀 크기
+    const reach = W * 0.36;
+
+    // 하단을 어둡게 깔아 집중
+    const g = ctx.createLinearGradient(0, H - 170, 0, H);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(1, 'rgba(0,0,0,.85)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, H - 170, W, 170);
+
+    // 가운데 심장 틀 (박자 맞추면 크게 뛴다)
+    const beatScale = 1 + this.pulse * 0.25;
+    drawHeart(ctx, cx, cy, px * beatScale, 'rgba(255,255,255,.18)', 'all');
+    drawHeartOutline(ctx, cx, cy, px * beatScale, this.flash.L || this.flash.R ? '#ff2b2b' : '#d8d0c8');
+
+    // 다가오는 반쪽들
+    for (const b of this.beats) {
+      if (b.judged) continue;
+      const remain = b.at - this.time;
+      if (remain > b.travel) continue;
+      const off = Math.max(-0.2, remain / b.travel) * reach;
+      const x = b.side === 'L' ? cx - off : cx + off;
+      drawHeart(ctx, x, cy, px, b.side === 'L' ? '#3aa0ff' : '#ff3a4a', b.side);
+    }
+
+    // 실수한 쪽 붉게 번쩍
+    for (const side of ['L', 'R']) {
+      if (this.flash[side] <= 0) continue;
+      drawHeart(ctx, cx, cy, px * beatScale, `rgba(255,30,30,${this.flash[side] * 2})`, side);
+    }
+
+    // 안내 · 남은 기회
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 15px "Nanum Gothic Coding", monospace';
+    ctx.fillStyle = '#9fd0ff';
+    ctx.fillText('[Q]', cx - 70, cy + 8);
+    ctx.fillStyle = '#ff9aa4';
+    ctx.fillText('[E]', cx + 70, cy + 8);
+    ctx.font = '13px "Nanum Gothic Coding", monospace';
+    ctx.fillStyle = '#d8d0c8';
+    const left = HB_MAX_MISTAKES - this.mistakes;
+    ctx.fillText(`박자에 맞춰 누르기 · 남은 기회 ${'♥'.repeat(left)}${'♡'.repeat(this.mistakes)}`, cx, H - 18);
+  },
+};
+
+function drawHeart(ctx, cx, cy, px, color, part) {
+  const w = HEART[0].length;
+  ctx.fillStyle = color;
+  HEART.forEach((row, y) => {
+    for (let x = 0; x < w; x++) {
+      if (row[x] !== 'X') continue;
+      if (part === 'L' && x > 3) continue;
+      if (part === 'R' && x < 3) continue;
+      ctx.fillRect(cx + (x - w / 2) * px, cy + (y - HEART.length / 2) * px, px, px);
+    }
+  });
+}
+
+function drawHeartOutline(ctx, cx, cy, px, color) {
+  const w = HEART[0].length;
+  const filled = (x, y) => HEART[y] && HEART[y][x] === 'X';
+  ctx.fillStyle = color;
+  const t = Math.max(1, px / 4);
+  HEART.forEach((row, y) => {
+    for (let x = 0; x < w; x++) {
+      if (!filled(x, y)) continue;
+      const ox = cx + (x - w / 2) * px;
+      const oy = cy + (y - HEART.length / 2) * px;
+      if (!filled(x, y - 1)) ctx.fillRect(ox, oy, px, t);
+      if (!filled(x, y + 1)) ctx.fillRect(ox, oy + px - t, px, t);
+      if (!filled(x - 1, y)) ctx.fillRect(ox, oy, t, px);
+      if (!filled(x + 1, y)) ctx.fillRect(ox + px - t, oy, t, px);
+    }
+  });
+}
+</script>
+  <script>
+/* ===== js/quest.js ===== */
+/* =========================================================
+ * quest.js — 라이브 방송 미션 · 아이템 · 친구 구출 · 엔딩 판정
+ * ========================================================= */
+const ITEMS = {
+  cage_key:   '철창 열쇠',
+  closet_key: '벽장 열쇠',
+  front_key:  '현관 열쇠',
+  tripod:     '삼각대',
+  phone:      '현우의 휴대폰',
+  diary1:     '일기장 조각 (1/2)',
+  diary2:     '일기장 조각 (2/2)',
+  diary:      '복원된 일기장',
+};
+
+/*
+ * 맵 위 상호작용 오브젝트
+ *  - item: 조사하면 얻는 아이템(바닥에 놓인 것은 sprite로 그림)
+ *  - interact(g): 커스텀 동작
+ *  - glint(g): 반짝임 표시 조건
+ */
+const QUEST_OBJECTS = [
+  {
+    id: 'exit', room: 'hall', tiles: [[9, 14], [10, 14]],
+    interact: g => Quest.tryExit(g),
+  },
+  {
+    id: 'shoebox', room: 'hall', tiles: [[2, 12]],
+    glint: g => Quest.flags.hintShoebox && !g.player.has('closet_key'),
+    interact(g) {
+      if (!Quest.flags.hintShoebox) {
+        return UI.say(['낡은 신발장이다. 곰팡이 냄새가 진동한다.', '...안쪽이 깊어서 손이 잘 안 닿는다.']);
+      }
+      if (g.player.has('closet_key') || Quest.flags.usedClosetKey) return UI.say(['더 이상 아무것도 없다.']);
+      Quest.give('closet_key', g);
+      UI.say(['시청자 말대로 신발장 깊숙한 곳을 더듬었다...', "'벽장'이라고 적힌 열쇠를 찾았다!"]);
+    },
+  },
+  {
+    id: 'desk', room: 'bedroom', tiles: [[9, 1]],
+    glint: () => !Quest.flags.deskOpened,
+    interact(g) {
+      if (Quest.flags.deskOpened) return UI.say(['텅 빈 서랍이다.']);
+      Quest.flags.deskOpened = true;
+      Quest.give('cage_key', g);
+      UI.say([
+        '책상 서랍 안에서 녹슨 철창 열쇠를 찾았다.',
+        { name: '', text: '……끼이이이익.' },
+        '...방금, 문 열리는 소리 아니었어?',
+      ], () => g.monster.spawn('bedroom', 1, 6.5, 0.6));
+    },
+  },
+  {
+    id: 'diary1', room: 'bedroom', tiles: [[16, 12]], item: 'diary1', sprite: 'paper',
+    text: ['찢어진 일기장 조각이다.', { name: '', text: "'…엄마는 오늘도 돌아오지 않았다. 할로윈인데.'" }],
+  },
+  {
+    id: 'tripod', room: 'basement', tiles: [[17, 2]], item: 'tripod', sprite: 'tripod',
+    text: ['방송용 삼각대다! 지하실까지 굴러와 있었네.'],
+    onTake: () => Quest.completeMission('tripod'),
+  },
+  {
+    id: 'diary2', room: 'basement', tiles: [[9, 7]], item: 'diary2', sprite: 'paper',
+    text: ['찢어진 일기장 조각이다.', { name: '', text: "'…아무도 날 찾지 않으면, 내가 찾아갈 거야.'" }],
+  },
+  {
+    id: 'cage', room: 'basement', tiles: [[15, 10]], friend: 'jisu',
+    interact(g) {
+      if (Quest.friends.jisu.rescued) return UI.say(['텅 빈 철창이다.']);
+      if (!g.player.has('cage_key')) {
+        return UI.say([
+          { name: '지수', text: '민우야!! 여기야! 철창에 갇혔어!' },
+          { name: '지수', text: '열쇠... 위층 방 책상에서 열쇠 같은 걸 본 것 같아!' },
+        ]);
+      }
+      Quest.take('cage_key', g);
+      Quest.rescue('jisu', g);
+      UI.say([
+        { name: '', text: '철컥— 녹슨 자물쇠가 열렸다.' },
+        { name: '지수', text: '흐윽... 고마워. 나 먼저 현관 쪽으로 가 있을게. 현우도 꼭 찾아줘!' },
+        { name: '', text: '……쿵. 쿵. 지하실 구석에서 무언가 일어서는 소리가 났다.' },
+      ], () => g.monster.spawn('basement', 2, 13, 0.4));
+    },
+  },
+  {
+    id: 'shelf', room: 'living', tiles: [[7, 1], [8, 1]],
+    glint: g => !g.player.has('front_key') && !Quest.flags.frontKeyTaken,
+    interact(g) {
+      if (Quest.flags.frontKeyTaken) return UI.say(['먼지 쌓인 책들뿐이다.']);
+      Quest.flags.frontKeyTaken = true;
+      Quest.give('front_key', g);
+      UI.say(['책장 사이에 열쇠 꾸러미가 끼어 있다.', '...현관 열쇠다! 이걸로 나갈 수 있어.']);
+    },
+  },
+  {
+    id: 'phone', room: 'living', tiles: [[12, 7]], item: 'phone', sprite: 'phone',
+    text: [
+      '현우의 휴대폰이다. 액정이 깨져 있다.',
+      { name: '', text: "보내지 못한 메시지: '벽장 안이야 문이 안 열려 살려줘'" },
+    ],
+    onTake: () => Quest.completeMission('phone'),
+  },
+  {
+    id: 'closet', room: 'living', tiles: [[15, 10]], friend: 'hyun',
+    interact(g) {
+      if (Quest.friends.hyun.rescued) return UI.say(['열린 벽장이다. 안쪽에 손톱자국이 가득하다.']);
+      if (!g.player.has('closet_key')) {
+        return UI.say([
+          { name: '', text: '쾅! 쾅! 쾅!' },
+          { name: '현우', text: '민우? 민우 맞지?! 벽장이 잠겼어! 열쇠를 찾아줘!' },
+        ]);
+      }
+      Quest.take('closet_key', g);
+      Quest.flags.usedClosetKey = true;
+      Quest.rescue('hyun', g);
+      UI.say([
+        { name: '', text: '덜컥— 벽장 문이 열렸다.' },
+        { name: '현우', text: '살았다... 진짜 죽는 줄 알았어. 현관에서 지수랑 기다릴게!' },
+        { name: '현우', text: '근데 민우야... 그거, 아직 이 방에 있어.' },
+      ], () => g.monster.spawn('living', 1, 13, 0.4));
+    },
+  },
+];
+
+/*
+ * 탈출까지의 메인 순서. 첫 번째 미완료 단계가 방송 화면 왼쪽 위 "▶ 목표"가 된다.
+ * (히든 엔딩 조건은 일부러 넣지 않는다)
+ */
+const GUIDE_STEPS = [
+  {
+    short: '안방 책상에서 철창 열쇠 찾기',
+    done: () => Quest.flags.deskOpened,
+  },
+  {
+    short: '지하실 철창의 지수 구출',
+    done: () => Quest.friends.jisu.rescued,
+  },
+  {
+    short: '지하실에서 삼각대 찾기',
+    done: () => Quest.mission('tripod').done,
+  },
+  {
+    short: '현관 신발장에서 벽장 열쇠 찾기',
+    done: g => g.player.has('closet_key') || Quest.flags.usedClosetKey,
+  },
+  {
+    short: '거실 벽장의 현우 구출',
+    done: () => Quest.friends.hyun.rescued,
+  },
+  {
+    short: '거실 책장에서 현관 열쇠 찾기',
+    done: () => Quest.flags.frontKeyTaken,
+  },
+  {
+    short: '현관문으로 탈출',
+    done: () => false,
+  },
+];
+
+const Quest = {
+  flags: {},
+  visited: new Set(),
+  capturing: false,
+
+  missions: [
+    {
+      id: 'tripod', title: '지하실에서 삼각대 찾아오기', done: false,
+      hint: '지하실 오른쪽 위 구석',
+    },
+    {
+      id: 'monsterCam', title: '괴물의 모습을 카메라로 3초간 포착하기', done: false, progress: 0,
+      hint: '손전등 빛 안에 3초간 계속 담기',
+    },
+    {
+      id: 'phone', title: '친구의 떨어진 휴대폰 찾기', done: false,
+      hint: '거실 가운데 바닥',
+    },
+  ],
+
+  friends: {
+    jisu: { name: '지수', rescued: false },
+    hyun: { name: '현우', rescued: false },
+  },
+
+  /** 시작·재시작 시 진행 상태 초기화 */
+  init() {
+    this.flags = {};
+    this.visited = new Set(['hall']);
+    this.capturing = false;
+    for (const o of QUEST_OBJECTS) o.taken = false;
+    for (const m of this.missions) { m.done = false; m.progress = 0; }
+    for (const f of Object.values(this.friends)) f.rescued = false;
+  },
+
+  mission(id) { return this.missions.find(m => m.id === id); },
+  missionsDone() { return this.missions.filter(m => m.done).length; },
+  rescuedCount() { return Object.values(this.friends).filter(f => f.rescued).length; },
+
+  /** 현재 목표 = 아직 안 끝난 첫 단계 */
+  currentStep(g) { return GUIDE_STEPS.find(s => !s.done(g)) || null; },
+
+  objectsInRoom(roomId = GameMap.currentId) {
+    return QUEST_OBJECTS.filter(o => o.room === roomId && !o.taken);
+  },
+
+  /** 해당 타일의 오브젝트를 조사. 처리했으면 true */
+  interact(tx, ty, g) {
+    const obj = this.objectsInRoom().find(o => o.tiles.some(([x, y]) => x === tx && y === ty));
+    if (!obj) return false;
+    if (obj.interact) {
+      obj.interact(g);
+    } else if (obj.item) {
+      obj.taken = true;
+      UI.say(obj.text || [`${ITEMS[obj.item]}을(를) 얻었다.`], () => {
+        this.give(obj.item, g);
+        if (obj.onTake) obj.onTake(g);
+      });
+    }
+    return true;
+  },
+
+  give(itemId, g) {
+    g.player.inventory.add(itemId);
+    UI.toast(`[${ITEMS[itemId]}] 획득`);
+    if (g.player.has('diary1') && g.player.has('diary2')) this.combineDiary(g);
+  },
+
+  take(itemId, g) {
+    g.player.inventory.delete(itemId);
+  },
+
+  /** 비밀 문서(일기장 조각 2장) 조합 → 저주의 원인 판명 */
+  combineDiary(g) {
+    g.player.inventory.delete('diary1');
+    g.player.inventory.delete('diary2');
+    g.player.inventory.add('diary');
+    this.flags.curseTruth = true;
+    UI.say([
+      { name: '', text: '두 조각의 찢어진 면이 딱 맞아떨어진다. 일기장이 복원되었다.' },
+      { name: '', text: "'1996년 10월 31일. 엄마가 날 벽장에 넣고 떠났다. 사탕 받으러 간다고 했는데.'" },
+      { name: '', text: "'배고파. 추워. 내 얼굴이 점점 파랗게 변해. 아무도 날 찾지 않으면…'" },
+      '...이 집의 괴물은, 버려진 아이였어?',
+    ]);
+    UI.chat('SYSTEM', '숨겨진 비밀 문서를 조합했습니다. (저주의 원인 판명)', 'system');
+  },
+
+  rescue(friendId, g) {
+    this.friends[friendId].rescued = true;
+    UI.addViewers(1800);
+    UI.chat('SYSTEM', `${this.friends[friendId].name} 구출 성공!`, 'mission');
+  },
+
+  completeMission(id) {
+    const m = this.mission(id);
+    if (!m || m.done) return;
+    m.done = true;
+    UI.renderMissions();
+    UI.chat('MISSION', `미션 완료: ${m.title}`, 'mission');
+
+    // 미션 보상: 시청자 급증 + 도네이션 힌트
+    if (id === 'tripod') {
+      UI.addViewers(2500);
+      this.flags.hintShoebox = true;
+      UI.donate('흉가덕후', 10000, '삼각대 ㄱㅅ! 근데 아까 현관 신발장 안쪽에 뭔가 반짝였음. 다시 확인해봐');
+    } else if (id === 'phone') {
+      UI.addViewers(2000);
+      UI.donate('새벽3시', 5000, '화면에 찢어진 종이 두 번 보였음. 안방이랑 지하실! 맞춰보면 뭔가 나올 듯');
+    } else if (id === 'monsterCam') {
+      UI.addViewers(6000);
+      UI.donate('퇴마사지망생', 50000, '레전드 장면 박제함 ㄷㄷ 근데 저거... 사람 아이 같지 않음?');
+    }
+  },
+
+  onEnterRoom(roomId, g) {
+    const first = !this.visited.has(roomId);
+    this.visited.add(roomId);
+    if (!first) return;
+
+    if (roomId === 'basement') {
+      UI.say([
+        { name: '', text: '지하실 공기가 얼음장처럼 차갑다.' },
+        '...뭔가 숨 쉬는 소리가 들리는데.',
+      ], () => g.monster.spawn('basement', 17, 13, 2.5));
+    } else if (roomId === 'living') {
+      UI.say([{ name: '', text: '어딘가에서 쾅, 쾅 무언가 두드리는 소리가 들린다.' }]);
+    } else if (roomId === 'bedroom') {
+      UI.say([{ name: '', text: '벽지에 아이 키를 잰 낙서가 남아 있다. 마지막 눈금 옆에 "할로윈"이라고 적혀 있다.' }]);
+    }
+  },
+
+  /** 매 프레임: 괴물 촬영 미션 판정 */
+  update(dt, g) {
+    const cam = this.mission('monsterCam');
+    const before = cam.progress;
+    this.capturing = !cam.done && this.monsterInFlashlight(g.player, g.monster);
+    cam.progress = this.capturing ? cam.progress + dt : 0;
+    if (cam.progress >= 3) this.completeMission('monsterCam');
+    if (before !== cam.progress) UI.renderMissions();
+  },
+
+  monsterInFlashlight(p, m) {
+    if (p.hidden || !m.active || m.roomId !== GameMap.currentId) return false;
+    const dx = m.x - p.x;
+    const dy = m.y - p.y;
+    if (Math.hypot(dx, dy) > TILE * 7) return false;
+    const diff = Math.atan2(Math.sin(Math.atan2(dy, dx) - p.lightAngle), Math.cos(Math.atan2(dy, dx) - p.lightAngle));
+    return Math.abs(diff) < 0.55 && GameMap.lineOfSight(p.x, p.y, m.x, m.y);
+  },
+
+  /* ---------------- 탈출 & 엔딩 판정 ---------------- */
+
+  tryExit(g) {
+    if (!g.player.has('front_key')) {
+      return UI.say(['현관문이 굳게 잠겨 있다.', '열쇠가 어딘가 있을 텐데...']);
+    }
+    const rescued = this.rescuedCount();
+    if (rescued < 2 && !this.flags.exitWarned) {
+      this.flags.exitWarned = true;
+      return UI.say([
+        '...친구들이 아직 안에 있어.',
+        { name: '', text: '(정말 혼자 나가려면 한 번 더 조사하세요)' },
+      ]);
+    }
+    g.end(this.evaluateEnding());
+  },
+
+  evaluateEnding() {
+    if (this.rescuedCount() < 2) return 'alone';
+    const allMissions = this.missionsDone() === this.missions.length;
+    if (allMissions && this.flags.curseTruth) return 'hidden';
+    return 'normal';
+  },
+
+  /* ---------------- 그리기 ---------------- */
+
+  drawWorld(ctx, g) {
+    for (const o of this.objectsInRoom()) {
+      const [tx, ty] = o.tiles[0];
+      const cx = tx * TILE + TILE / 2;
+      const cy = ty * TILE + TILE / 2;
+      if (o.sprite) drawSprite(ctx, o.sprite, cx, cy);
+      if (o.friend === 'jisu' && !this.friends.jisu.rescued) {
+        drawFriend(ctx, cx, cy, '#6fa8dc', g.time);
+        GameMap.drawCageBars(ctx, tx * TILE, ty * TILE);
+      }
+    }
+  },
+
+  /** 어둠 레이어 위: 반짝임, 갇힌 친구의 목소리 */
+  drawOverlay(ctx, g) {
+    const t = g.time;
+    for (const o of this.objectsInRoom()) {
+      const [tx, ty] = o.tiles[0];
+      const cx = tx * TILE + TILE / 2;
+      const cy = ty * TILE + TILE / 2;
+      const glint = o.item ? true : o.glint ? o.glint(g) : false;
+      if (glint) {
+        const a = 0.35 + Math.sin(t * 4 + tx) * 0.35;
+        ctx.fillStyle = `rgba(255, 244, 200, ${a})`;
+        ctx.fillRect(cx - 1, cy - 5, 2, 10);
+        ctx.fillRect(cx - 5, cy - 1, 10, 2);
+      }
+      if (o.friend && !this.friends[o.friend].rescued) {
+        const near = Math.hypot(g.player.x - cx, g.player.y - cy) < TILE * 5;
+        if (near && Math.sin(t * 2) > -0.2) {
+          ctx.font = '12px "Nanum Gothic Coding", monospace';
+          ctx.textAlign = 'center';
+          ctx.fillStyle = 'rgba(230, 220, 255, .85)';
+          ctx.fillText(o.friend === 'hyun' ? '쾅…쾅… 거기 누구 있어?' : '살려줘…', cx, cy - 22);
+        }
+      }
+    }
+  },
+};
+
+function drawSprite(ctx, sprite, cx, cy) {
+  if (sprite === 'tripod') {
+    ctx.strokeStyle = '#9a9a9a';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 8); ctx.lineTo(cx - 7, cy + 9);
+    ctx.moveTo(cx, cy - 8); ctx.lineTo(cx + 7, cy + 9);
+    ctx.moveTo(cx, cy - 8); ctx.lineTo(cx, cy + 9);
+    ctx.stroke();
+    ctx.fillStyle = '#222';
+    ctx.fillRect(cx - 4, cy - 11, 8, 4);
+  } else if (sprite === 'phone') {
+    ctx.fillStyle = '#111';
+    ctx.fillRect(cx - 4, cy - 7, 8, 13);
+    ctx.fillStyle = '#5a86c8';
+    ctx.fillRect(cx - 3, cy - 6, 6, 10);
+  } else if (sprite === 'paper') {
+    ctx.fillStyle = '#d8d0b8';
+    ctx.beginPath();
+    ctx.moveTo(cx - 6, cy - 6); ctx.lineTo(cx + 6, cy - 4); ctx.lineTo(cx + 4, cy + 7); ctx.lineTo(cx - 5, cy + 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#6a5a4a';
+    ctx.fillRect(cx - 3, cy - 2, 6, 1);
+    ctx.fillRect(cx - 3, cy + 1, 5, 1);
+  }
+}
+
+function drawFriend(ctx, cx, cy, shirt, t) {
+  const shiver = Math.sin(t * 30) > 0 ? 1 : 0;
+  const x = cx + shiver;
+  ctx.fillStyle = shirt;
+  ctx.fillRect(x - 6, cy - 2, 12, 10);
+  ctx.fillStyle = '#efc8a0';
+  ctx.fillRect(x - 5, cy - 12, 10, 10);
+  ctx.fillStyle = '#3a2418';
+  ctx.fillRect(x - 6, cy - 14, 12, 4);
+  ctx.fillRect(x - 6, cy - 12, 2, 9);
+  ctx.fillRect(x + 4, cy - 12, 2, 9);
+}
+</script>
+  <script>
+/* ===== js/audio.js ===== */
+/* =========================================================
+ * audio.js — 효과음 · 배경 소음 · 추격 사운드 (Web Audio로 합성, 파일 불필요) · TTS
+ *
+ *  라우팅
+ *   [효과음/후원]  tone·noise ──▶ master(크게) ──▶ softclip ──▶ 출력
+ *   [배경 소음]    hiss·wind·drone ──▶ ambient ──┐
+ *   [추격 사운드]  pad·siren·moan·clank·glitch ──▶ chaseIn ──▶ bitcrusher ──▶ chase ──┤
+ *                                                         mix(숨으면 로우패스로 먹먹하게) ──▶ 출력
+ * ========================================================= */
+const DONATION_VOLUME = 1.0;   // 후원 알림·효과음 볼륨 (0 ~ 1). 일부러 크게 설정됨
+const AMBIENT_VOLUME = 0.6;    // 백색소음/룸톤
+const CHASE_VOLUME = 0.9;      // 추격 사운드 최대치
+const BLIP_VOLUME = 0.25;      // 대사 타이핑 소리
+const JUMPSCARE_VOLUME = 1.0;  // 잡혔을 때 비명. 극단적 클리핑으로 낼 수 있는 최대 음압
+
+const Sound = {
+  ctx: null,
+  master: null,
+  koVoice: null,
+  chaseLevel: 0,
+  beatTimer: 0,
+
+  /** 브라우저 자동재생 정책: 사용자 입력(방송 시작) 시점에 호출해야 소리가 난다 */
+  unlock() {
+    if (!this.ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      this.ctx = new AC();
+      // 볼륨을 끝까지 올리고 소프트 클리핑으로 깨지지 않게 최대한 크게
+      this.master = this.ctx.createGain();
+      this.master.gain.value = DONATION_VOLUME;
+      this.master.connect(this.shaper(x => Math.tanh(x * 2.5))).connect(this.ctx.destination);
+
+      this.mix = this.ctx.createBiquadFilter();
+      this.mix.type = 'lowpass';
+      this.mix.frequency.value = 20000;
+      this.mix.connect(this.ctx.destination);
+
+      this.buildAmbience();
+      this.buildChase();
+    }
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+    if ('speechSynthesis' in window) {
+      const pickVoice = () => {
+        this.koVoice = speechSynthesis.getVoices().find(v => v.lang.toLowerCase().startsWith('ko')) || null;
+      };
+      pickVoice();
+      speechSynthesis.addEventListener('voiceschanged', pickVoice);
+    }
+  },
+
+  /* ---------------- 노드 헬퍼 ---------------- */
+
+  gain(value, dest) {
+    const g = this.ctx.createGain();
+    g.gain.value = value;
+    if (dest) g.connect(dest);
+    return g;
+  },
+
+  filter(type, freq, q, dest) {
+    const f = this.ctx.createBiquadFilter();
+    f.type = type;
+    f.frequency.value = freq;
+    if (q) f.Q.value = q;
+    if (dest) f.connect(dest);
+    return f;
+  },
+
+  osc(type, freq, dest) {
+    const o = this.ctx.createOscillator();
+    o.type = type;
+    o.frequency.value = freq;
+    if (dest) o.connect(dest);
+    o.start();
+    return o;
+  },
+
+  /** param에 저주파 흔들림을 더한다 (param 기본값 ± depth) */
+  lfo(rate, depth, param, type = 'sine') {
+    this.osc(type, rate, this.gain(depth, param));
+  },
+
+  shaper(fn, size = 1024) {
+    const s = this.ctx.createWaveShaper();
+    const curve = new Float32Array(size);
+    for (let i = 0; i < size; i++) curve[i] = fn((i / (size - 1)) * 2 - 1);
+    s.curve = curve;
+    return s;
+  },
+
+  noiseBuffer(sec) {
+    const buf = this.ctx.createBuffer(1, this.ctx.sampleRate * sec, this.ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    return buf;
+  },
+
+  loopNoise(dest) {
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuffer(3);
+    src.loop = true;
+    src.connect(dest);
+    src.start();
+  },
+
+  /* ---------------- 배경 소음 (캠코더 히스 + 폐가 바람 + 저음 웅웅) ---------------- */
+
+  buildAmbience() {
+    this.ambient = this.gain(0, this.mix);
+    this.ambient.gain.setTargetAtTime(AMBIENT_VOLUME, this.ctx.currentTime, 2);
+
+    // 테이프 히스 (치이이—)
+    this.loopNoise(this.filter('highpass', 3500, 0, this.gain(0.035, this.ambient)));
+
+    // 틈새 바람: 저역 노이즈의 컷오프·볼륨이 천천히 출렁임
+    const windGain = this.gain(0.22, this.ambient);
+    const wind = this.filter('lowpass', 260, 0.8, windGain);
+    this.loopNoise(wind);
+    this.lfo(0.07, 180, wind.frequency);
+    this.lfo(0.11, 0.14, windGain.gain);
+
+    // 건물이 우는 듯한 저음 드론 (살짝 어긋난 두 음이 맥놀이)
+    const drone = this.gain(0.05, this.ambient);
+    this.osc('sine', 48, drone);
+    this.osc('sine', 48.7, drone);
+  },
+
+  /* ---------------- 추격 사운드 (신스 + 기계음, 비트크러시로 더럽게) ---------------- */
+
+  buildChase() {
+    this.chase = this.gain(0, this.mix);
+    // 비트크러셔: 진폭을 9단계로 깎아 디지털 깨짐
+    const crush = this.shaper(x => Math.round(x * 4) / 4);
+    this.chaseIn = this.gain(1, crush);
+    crush.connect(this.chase);
+
+    // 1) 불협화음 신스 패드: 단2도로 부딪히는 톱니파 + 공명 필터 스윕
+    this.padFilter = this.filter('lowpass', 500, 9, this.gain(0.16, this.chaseIn));
+    [55, 58.27, 82.41, 87.31].forEach((f, i) => {
+      const o = this.osc('sawtooth', f, this.padFilter);
+      this.lfo(0.13 + i * 0.05, 2.5, o.frequency); // 음정이 불안하게 흔들림
+    });
+    this.lfo(0.27, 380, this.padFilter.frequency);
+
+    // 2) 링 모듈레이션 사이렌: 금속성 비배음 + 울부짖듯 미끄러지는 음정
+    const ring = this.gain(0, this.filter('bandpass', 900, 1.2, this.gain(0.2, this.chaseIn)));
+    this.siren = this.osc('triangle', 440, ring);
+    this.lfo(0.45, 140, this.siren.frequency);
+    this.ringMod = this.osc('sine', 233, ring.gain);
+    this.lfo(3.1, 40, this.ringMod.frequency, 'square'); // 기계적으로 뚝뚝 끊기는 변조
+
+    // 3) 로봇 신음: 낮은 톱니파를 모음 포먼트로 걸러 "아—" 하는 합성 목소리
+    const moan = this.gain(0.1, this.chaseIn);
+    this.moan = this.osc('sawtooth', 68, null);
+    this.lfo(0.21, 9, this.moan.frequency);
+    [[700, 9], [1150, 11], [2600, 14]].forEach(([f, q]) => {
+      const fmt = this.filter('bandpass', f, q, moan);
+      this.lfo(0.17, f * 0.25, fmt.frequency);
+      this.moan.connect(fmt);
+    });
+  },
+
+  /** 기계 박동: 금속 쇳소리 + 피스톤 쿵 (괴물이 가까울수록 빨라짐) */
+  clank(level) {
+    const out = this.chaseIn;
+    this.noise(0, 0.05, 0.5 * level, out, 'highpass', 2500);
+    this.tone('square', 1870, 0, 0.09, 0.25 * level, null, out);
+    this.tone('square', 2633, 0, 0.07, 0.2 * level, null, out);
+    this.tone('sine', 85, 0, 0.22, 0.9 * level, 32, out);
+  },
+
+  /** 데이터 깨지는 듯한 기계 비프음 연타 */
+  glitch(level) {
+    const notes = [90, 180, 1200, 2400, 3400, 4700];
+    const n = 3 + ((Math.random() * 5) | 0);
+    for (let i = 0; i < n; i++) {
+      const f = notes[(Math.random() * notes.length) | 0];
+      this.tone('square', f, i * 0.035, 0.03, 0.18 * level, null, this.chaseIn);
+    }
+  },
+
+  /** 매 프레임: 괴물 상태/거리에 따라 추격 사운드 강도 조절 */
+  update(dt, g) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const m = g.monster;
+    const p = g.player;
+    const sameRoom = m.active && m.roomId === GameMap.currentId;
+    const live = g.state === 'play';
+    // 잡힌 순간부터는 모든 소리를 끊어 정적을 만든다 (비명은 별도 버스)
+    const silent = g.state === 'caught' || g.endType === 'caught';
+
+    let level = 0;
+    let prox = 0;
+    if (live && sameRoom) {
+      prox = Math.max(0, 1 - Math.hypot(m.x - p.x, m.y - p.y) / (TILE * 12));
+      const hunting = m.state === 'chase' || m.state === 'grab';
+      level = hunting ? 0.55 + prox * 0.45 : 0.18 + prox * 0.25; // 수색 중엔 낮게 깔림
+      if (m.state === 'check') level = 0.15;                     // 조사 중엔 숨죽인 정적 + 심장 소리만
+    } else if (live && m.pending) {
+      level = 0.3; // 곧 나타난다는 예고
+    }
+
+    // 올라갈 땐 빠르게, 사라질 땐 천천히 꼬리를 남기며
+    const fall = silent ? 0.03 : 1.4;
+    this.chase.gain.setTargetAtTime(level * CHASE_VOLUME, t, level > this.chaseLevel ? 0.12 : fall);
+    this.chaseLevel = level;
+    this.padFilter.frequency.setTargetAtTime(500 + prox * 1400, t, 0.2);
+    this.siren.frequency.setTargetAtTime(380 + prox * 420, t, 0.3);
+    this.ringMod.frequency.setTargetAtTime(233 + prox * 190, t, 0.3);
+    this.moan.frequency.setTargetAtTime(68 - prox * 20, t, 0.4);
+
+    this.mix.frequency.setTargetAtTime(p.hidden && live ? 650 : 20000, t, 0.08);
+    if (silent) this.ambient.gain.setTargetAtTime(0, t, 0.03);
+    else this.ambient.gain.setTargetAtTime(g.state === 'ending' ? AMBIENT_VOLUME * 0.3 : AMBIENT_VOLUME, t, 1);
+
+    if (level > 0.1) {
+      this.beatTimer -= dt;
+      if (this.beatTimer <= 0) {
+        this.clank(level);
+        this.beatTimer = 0.7 - prox * 0.45;
+      }
+      if (Math.random() < dt * 1.6 * level) this.glitch(level);
+    }
+  },
+
+  /* ---------------- 원샷 효과음 ---------------- */
+
+  tone(type, freq, start, dur, gain, endFreq, dest = this.master) {
+    const t = this.ctx.currentTime + start;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t);
+    if (endFreq) osc.frequency.exponentialRampToValueAtTime(endFreq, t + dur);
+    g.gain.setValueAtTime(gain, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    osc.connect(g).connect(dest);
+    osc.start(t);
+    osc.stop(t + dur + 0.05);
+  },
+
+  noise(start, dur, gain, dest = this.master, filterType, filterFreq) {
+    const t = this.ctx.currentTime + start;
+    const src = this.ctx.createBufferSource();
+    const g = this.ctx.createGain();
+    src.buffer = this.noiseBuffer(dur);
+    g.gain.setValueAtTime(gain, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    const head = filterType ? this.filter(filterType, filterFreq, 0, g) : g;
+    src.connect(head);
+    g.connect(dest);
+    src.start(t);
+  },
+
+  /** 언더테일식 대사 타이핑음. 화자마다 음색/음높이가 다르다 */
+  blip(speaker) {
+    if (!this.ctx) return;
+    if (!this.blipBus) this.blipBus = this.gain(BLIP_VOLUME, this.ctx.destination);
+    const [type, freq, dur] = BLIP_VOICES[speaker] || BLIP_VOICES.default;
+    const f = freq * (0.97 + Math.random() * 0.06); // 살짝씩 다른 음정으로 말하는 느낌
+    this.tone(type, f, 0, dur, 0.8, null, this.blipBus);
+  },
+
+  /* ---------------- 심장박동 미니게임 ---------------- */
+
+  fxOut() {
+    if (!this.fxBus) this.fxBus = this.gain(0.9, this.ctx.destination); // 숨어도 먹먹해지지 않게 직결
+    return this.fxBus;
+  },
+
+  /** 박동 순간 "두근" — 낮고 둔탁한 저음 */
+  heartThump() {
+    if (!this.ctx) return;
+    this.tone('sine', 72, 0, 0.22, 1.0, 38, this.fxOut());
+    this.noise(0, 0.06, 0.25, this.fxOut(), 'lowpass', 300);
+  },
+
+  /** 박자 맞춤: 짧고 맑은 틱 */
+  heartHit() {
+    if (!this.ctx) return;
+    this.tone('triangle', 880, 0, 0.07, 0.35, null, this.fxOut());
+  },
+
+  /** 실수: 거친 버즈 + 괴물이 반응하는 듯한 하강음 */
+  heartMiss() {
+    if (!this.ctx) return;
+    this.tone('square', 110, 0, 0.3, 0.6, 70, this.fxOut());
+    this.tone('sawtooth', 600, 0, 0.35, 0.4, 150, this.fxOut());
+  },
+
+  /** 괴물 출현 순간: 불협화음 일격 */
+  stinger() {
+    if (!this.ctx) return;
+    this.noise(0, 0.4, 0.8);
+    [61.7, 65.4, 92.5, 1046, 1108].forEach(f => this.tone('sawtooth', f, 0, 1.6, 0.35, f * 0.94));
+    this.tone('sine', 50, 0, 1.2, 1.0, 28);
+  },
+
+  /**
+   * 잡혔을 때 점프스케어 (DOORS의 Rush 잡힘 사운드 참고)
+   *  - Rush 특징: 낮은 굉음(rumble)이 고음 스크리치로 치솟음 / 지직거리는 스태틱 섞인 포효 /
+   *    "Jumpscare Static" + "Jumpscare" 두 소리가 겹침 / 게임에서 가장 긴 점프스케어
+   *  - 구성: [쾅] → [스태틱 폭풍 + 굉음→스크리치 상승 + 비명 + 으르렁 링모드] 최대 음압 유지 → 뚝 끊김
+   *  마스터와 별개 버스에서 tanh(x*8)로 짓눌러 0dBFS를 꽉 채운다 (= 브라우저가 낼 수 있는 가장 큰 소리)
+   */
+  jumpscare() {
+    if (!this.ctx) return;
+    if (!this.scareBus) {
+      const crush = this.shaper(x => Math.tanh(x * 8));
+      crush.connect(this.ctx.destination);
+      this.scareBus = this.gain(JUMPSCARE_VOLUME, crush);
+    }
+    const ctx = this.ctx;
+    const bus = this.scareBus;
+    const t0 = ctx.currentTime;
+    const end = t0 + CAUGHT_SCREAM;
+    const rise = t0 + 1.3;  // 굉음이 스크리치까지 치솟는 데 걸리는 시간
+
+    // from에서 시작해 rise 시점까지 peak로 차오르고, 끝까지 유지하다가 마지막에 뚝 끊는 엔벨로프
+    const held = (peak, dest = bus, from = peak) => {
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(from, t0 + 0.015);
+      g.gain.linearRampToValueAtTime(peak, rise);
+      g.gain.setValueAtTime(peak, end - 0.06);
+      g.gain.linearRampToValueAtTime(0, end);
+      g.connect(dest);
+      return g;
+    };
+    const voice = (type, freq, dest) => {
+      const o = ctx.createOscillator();
+      o.type = type;
+      o.frequency.setValueAtTime(freq, t0);
+      if (dest) o.connect(dest);
+      o.start(t0);
+      o.stop(end + 0.1);
+      return o;
+    };
+    const wobble = (rate, depth, param, type = 'sine') => voice(type, rate, this.gain(depth, param));
+
+    // 0) 쾅! 첫 타격
+    this.noise(0, 0.35, 1.0, bus);
+    this.tone('sine', 60, 0, 0.6, 1.0, 22, bus);
+
+    // 1) Jumpscare Static: 지지직이 20Hz대로 덜덜 끊기며, 괴물이 덮쳐올수록 점점 커짐
+    const stutter = this.gain(0.5, held(0.9, bus, 0.06));
+    wobble(21, 0.5, stutter.gain, 'square');
+    const staticSrc = ctx.createBufferSource();
+    staticSrc.buffer = this.noiseBuffer(1);
+    staticSrc.loop = true;
+    staticSrc.connect(this.filter('highpass', 900, 0, stutter));
+    staticSrc.start(t0);
+    staticSrc.stop(end + 0.1);
+
+    // 2) 굉음 → 스크리치: 낮게 깔린 톱니파 무리가 1.3초에 걸쳐 고음으로 치솟음 (필터도 같이 열림)
+    const sweepFilter = this.filter('lowpass', 250, 6, held(0.9));
+    sweepFilter.frequency.setValueAtTime(250, t0);
+    sweepFilter.frequency.exponentialRampToValueAtTime(9000, rise);
+    [0, 1, 2, 3, 4].forEach(i => {
+      const o = voice('sawtooth', 55 + i * 3.7, sweepFilter);
+      o.frequency.exponentialRampToValueAtTime(1650 + i * 87, rise);         // 불협으로 어긋난 고음
+      o.frequency.setValueAtTime(1650 + i * 87, end - 0.45);
+      o.frequency.exponentialRampToValueAtTime(700 + i * 40, end);           // 끝에서 아래로 일그러짐
+      wobble(6 + i, 40 + i * 15, o.frequency);                               // "늘어진 테이프" 같은 흔들림
+    });
+
+    // 3) 비명: 빠른 비브라토 톱니파를 목소리 대역으로 거름, 계속 높아짐
+    const scream = voice('sawtooth', 520, this.filter('bandpass', 2600, 3, held(0.8, bus, 0.05)));
+    scream.frequency.exponentialRampToValueAtTime(1400, rise);
+    scream.frequency.linearRampToValueAtTime(1550, end);
+    wobble(19, 220, scream.frequency);
+
+    // 4) 으르렁 바닥: 낮은 톱니파를 37Hz로 링모듈레이션 → 기계가 갈리는 듯한 저음
+    const ring = ctx.createGain();
+    ring.gain.value = 0;
+    ring.connect(this.filter('lowpass', 500, 2, held(0.8)));
+    voice('sawtooth', 48, ring);
+    voice('sine', 37, ring.gain);
+  },
+
+  /** 후원 알림음. scare=true면 소름 끼치는 버전 */
+  donationAlert(scare = false) {
+    if (!this.ctx) return;
+    if (scare) {
+      // 쾅! + 비명 같은 하강 스크리치
+      this.noise(0, 0.35, 1.0);
+      this.tone('sine', 90, 0, 0.9, 1.0, 35);
+      this.tone('sawtooth', 1400, 0.02, 1.1, 0.7, 180);
+      this.tone('sawtooth', 1480, 0.02, 1.1, 0.7, 170);
+      this.tone('square', 666, 0.3, 0.8, 0.4, 600);
+      return;
+    }
+    // 찰칵 터지는 소리 + 띠리리링~ 아르페지오
+    this.noise(0, 0.08, 1.0);
+    this.tone('sine', 120, 0, 0.25, 1.0, 60);
+    [1047, 1319, 1568, 2093, 2637].forEach((f, i) => {
+      this.tone('square', f, 0.05 + i * 0.07, 0.35, 0.6);
+      this.tone('sine', f * 2, 0.05 + i * 0.07, 0.5, 0.4);
+    });
+    this.tone('triangle', 2093, 0.45, 0.9, 0.8);
+  },
+
+  /** 후원 메시지를 TTS로 읽기 (이전 낭독은 끊고 새로 읽음) */
+  speak(text, { pitch = 1, rate = 1.05, delay = 0.7 } = {}) {
+    if (!('speechSynthesis' in window)) return;
+    setTimeout(() => {
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(ttsText(text));
+      u.lang = 'ko-KR';
+      if (this.koVoice) u.voice = this.koVoice;
+      u.pitch = pitch;
+      u.rate = rate;
+      u.volume = 1;
+      speechSynthesis.speak(u);
+    }, delay * 1000);
+  },
+};
+
+// 화자별 타이핑 음성: [파형, 기본 주파수(Hz), 길이(초)]. 키는 대화창 name ('' = 나레이션)
+const BLIP_VOICES = {
+  '민우': ['square', 330, 0.045],
+  '지수': ['square', 560, 0.04],
+  '현우': ['triangle', 210, 0.055],
+  '': ['sine', 140, 0.06],          // 나레이션: 낮고 둔탁하게
+  default: ['square', 400, 0.045],
+};
+
+/** 채팅 줄임말을 TTS가 읽을 수 있게 변환 */
+function ttsText(s) {
+  return s
+    .replace(/ㄱㅅ/g, '감사')
+    .replace(/ㅇㅈ/g, '인정')
+    .replace(/ㄷㄷ+/g, '덜덜')
+    .replace(/ㅋ+/g, '크크크')
+    .replace(/\?{3,}/g, '?')
+    .replace(/[ㄱ-ㅎㅏ-ㅣ]+/g, '');
+}
+</script>
+  <script>
+/* ===== js/ui.js ===== */
+/* =========================================================
+ * ui.js — 방송 UI (시청자 수 · 채팅 · 도네이션) · 대화창 · 엔딩 화면
+ * ========================================================= */
+const CHAT_USERS = [
+  '귀신잡는용', '쫄보아님', '새벽3시', 'ㅇㅇ', '할로윈덕후', '무서운거못봄',
+  '민우팬1호', '퇴마사지망생', '야식먹는중', '흉가탐험러', 'lurker_99', '호박머리',
+];
+const USER_COLORS = ['#ff9d5c', '#7fd1ff', '#c49bff', '#7fe0a0', '#ff7aa8', '#ffe07a'];
+
+const CHAT_LINES = {
+  idle: [
+    'ㅋㅋㅋㅋ 분위기 미쳤다', '저 뒤에 뭐 지나간 거 아님?', '민우야 방송 켜놓고 도망가지마라',
+    '조명 좀 더 밝게 ㄱㄱ', '친구들 어디감??', '여기 진짜 그 폐가임?', '방금 소름돋음',
+    '구독 박고 갑니다', '왼쪽 봐 왼쪽', '이거 연출이지?', '반짝이는 거 조사해봐',
+  ],
+  scary: ['방금 무슨 소리임?', '분위기 이상한데', '여기 들어가지 마라', '불길하다...', '발소리 들리지 않음?'],
+  chase: [
+    '뛰어!!!!!!', '뒤에 뒤에!!!', '숨어 숨어 숨어', 'ㅁㅊ 저게 뭐야', '장롱!! 장롱 들어가!!',
+    'ㄷㄷㄷㄷㄷㄷ', '아 심장 터질 듯', '살려줘 민우야ㅠㅠ', '저거 CG 아님???', '상자 뒤에 숨어!!',
+  ],
+  hide: ['숨소리 줄여...', '조용히...', '아직 나가지마', '발소리 들림?', '제발 지나가라', '...', '숨참아'],
+  check: ['Q E 박자 맞춰!!!', '심장 소리 들린다ㅠㅠ', '제발제발제발', '숨 참아!!!!', '앞에 서 있어 ㄷㄷ', '침착해 민우야'],
+};
+
+// 조용히 탐색 중일 때 불시에 터지는 후원 (scare = 소름 버전 효과음 + 저음 TTS)
+const SURPRISE_DONATIONS = [
+  { user: '새벽3시', amount: 1000, msg: '민우야 방금 네 바로 뒤에 누가 서 있었어' },
+  { user: '호박머리', amount: 3000, msg: '화면 오른쪽 위 구석에 얼굴 있음. 확대해봐' },
+  { user: '흉가탐험러', amount: 5000, msg: '나 이 집 살던 사람 알아. 벽장은 절대 열지 마' },
+  { user: '???', amount: 444, msg: '나도 같이 놀아도 돼?', scare: true },
+  { user: '귀신잡는용', amount: 2000, msg: '방금 채팅창에 아무도 안 쓴 메시지 올라옴 ㄷㄷ' },
+  { user: '???', amount: 444, msg: '찾았다', scare: true },
+];
+
+const ENDINGS = {
+  caught: {
+    tag: 'BAD ENDING', title: '방송 사고', cls: 'bad',
+    text: [
+      '화면이 지직거리며 꺼졌다.',
+      '다음 날, 민우TV 채널에는 "방송이 종료되었습니다"라는 문구만 남아 있었다.',
+    ],
+  },
+  alone: {
+    tag: 'BAD ENDING', title: '혼자 남은 생존자', cls: 'bad',
+    text: [
+      '민우는 혼자 폐가를 빠져나왔다.',
+      '하지만 친구들은 끝내 돌아오지 않았다. 채팅창은 "친구들은?"이라는 말로 가득 찼다...',
+    ],
+  },
+  normal: {
+    tag: 'NORMAL ENDING', title: '무사 귀환', cls: 'normal',
+    text: [
+      '세 친구는 무사히 폐가를 탈출했다. 방송은 커뮤니티를 뒤흔든 화제가 되었다.',
+      '하지만 폐가의 저주는 여전히 그곳에 남아 있다. 다음 할로윈에도.',
+    ],
+  },
+  hidden: {
+    tag: 'HIDDEN ENDING', title: '할로윈의 아이', cls: 'hidden-end',
+    text: [
+      '민우는 복원한 일기장을 카메라 앞에 펼쳐 읽었다. 벽장에 버려진 아이의 이야기를.',
+      '현관문을 나서는 순간, 등 뒤에서 작은 목소리가 들렸다. "…찾아줘서 고마워."',
+      '돌아본 폐가의 창문 너머로, 파란 얼굴의 아이가 사탕 바구니를 든 채 웃으며 사라졌다.',
+    ],
+  },
+};
+
+const UI = {
+  el: {},
+  viewers: 1204,
+  viewerTarget: 1204,
+  recTime: 0,
+  chatTimer: 2,
+  queue: [],
+  current: null,
+  typed: 0,
+  toastTimer: 0,
+  donationTimer: 0,
+  surpriseTimer: 35,
+  surpriseQueue: [],
+
+  init() {
+    const $ = id => document.getElementById(id);
+    this.el = {
+      viewers: $('viewer-count'),
+      recTime: $('rec-time'),
+      roomName: $('room-name'),
+      camCapture: $('cam-capture'),
+      camProgress: $('cam-progress'),
+      hideIndicator: $('hide-indicator'),
+      toast: $('toast'),
+      donation: $('donation'),
+      donationName: $('donation-name'),
+      donationAmount: $('donation-amount'),
+      donationMsg: $('donation-msg'),
+      danger: $('danger'),
+      dialog: $('dialog'),
+      dialogName: $('dialog-name'),
+      dialogText: $('dialog-text'),
+      title: $('title-screen'),
+      startBtn: $('start-btn'),
+      ending: $('ending-screen'),
+      endingTag: $('ending-tag'),
+      endingTitle: $('ending-title'),
+      endingText: $('ending-text'),
+      endingStats: $('ending-stats'),
+      retryBtn: $('retry-btn'),
+      missions: $('mission-list'),
+      objective: $('objective'),
+      hudLeft: $('hud-left'),
+      chatLog: $('chat-log'),
+    };
+    this.el.startBtn.addEventListener('click', () => Game.start());
+    this.el.retryBtn.addEventListener('click', () => Game.restart());
+    this.el.dialog.addEventListener('click', () => this.advance());
+
+    this.renderMissions();
+    this.renderObjective(Game);
+    this.el.hudLeft.classList.add('hidden'); // 방송 시작 후 표시
+    this.chat('SYSTEM', '방송 대기 중... 시청자들이 모이고 있습니다.', 'system');
+  },
+
+  /** 다시 방송하기: 방송 UI를 처음 상태로 */
+  reset(g) {
+    Object.assign(this, {
+      viewers: 1204, viewerTarget: 1204, recTime: 0, chatTimer: 2,
+      queue: [], current: null, typed: 0, toastTimer: 0, donationTimer: 0,
+      surpriseTimer: 35, surpriseQueue: [],
+    });
+    if ('speechSynthesis' in window) speechSynthesis.cancel();
+    ['dialog', 'toast', 'donation', 'hideIndicator', 'camCapture', 'ending']
+      .forEach(k => this.el[k].classList.add('hidden'));
+    this.el.hudLeft.classList.remove('hidden');
+    this.el.chatLog.replaceChildren();
+    this.el.retryBtn.blur();
+    this.renderMissions();
+    this.renderObjective(g);
+    this.setRoom(GameMap.room.name);
+  },
+
+  /* ---------------- 대화창 (게임 진행을 멈춤) ---------------- */
+
+  isBlocking() { return !!this.current; },
+
+  /** lines: 문자열(=민우 대사) 또는 { name, text }. name이 ''이면 나레이션 */
+  say(lines, onDone) {
+    for (const l of [].concat(lines)) this.queue.push(typeof l === 'string' ? { name: '민우', text: l } : l);
+    if (onDone) this.queue.push({ fn: onDone });
+    if (!this.current) this.next();
+  },
+
+  next() {
+    this.current = null;
+    while (this.queue.length) {
+      const item = this.queue.shift();
+      if (item.fn) {
+        item.fn();
+        if (this.current) return; // 콜백 안에서 새 대사가 열림
+        continue;
+      }
+      this.current = item;
+      this.typed = 0;
+      this.el.dialog.classList.remove('hidden');
+      this.el.dialog.classList.toggle('narration', !item.name);
+      this.el.dialogName.classList.toggle('hidden', !item.name);
+      this.el.dialogName.textContent = item.name || '';
+      this.el.dialogText.textContent = '';
+      return;
+    }
+    this.el.dialog.classList.add('hidden');
+  },
+
+  /** 언더테일식: 타이핑 중에 누르면 문장을 즉시 완성, 완성된 상태에서 누르면 다음 문장 */
+  advance() {
+    if (!this.current) return;
+    const text = this.current.text;
+    if (this.typed < text.length) {
+      this.typed = text.length;
+      this.el.dialogText.textContent = text;
+    } else {
+      this.next();
+    }
+  },
+
+  /* ---------------- 방송 요소 ---------------- */
+
+  toast(text, seconds = 2.4) {
+    this.el.toast.textContent = text;
+    this.el.toast.classList.remove('hidden');
+    this.toastTimer = seconds;
+  },
+
+  chat(user, text, cls = '') {
+    const line = document.createElement('div');
+    line.className = `chat-line ${cls}`;
+    const name = document.createElement('span');
+    name.className = 'user';
+    name.textContent = user;
+    if (!cls) name.style.color = USER_COLORS[hashStr(user) % USER_COLORS.length];
+    line.append(name, document.createTextNode(text));
+    this.el.chatLog.append(line);
+    while (this.el.chatLog.children.length > 80) this.el.chatLog.firstChild.remove();
+    this.el.chatLog.scrollTop = this.el.chatLog.scrollHeight;
+  },
+
+  donate(user, amount, msg, { scare = false } = {}) {
+    const won = `${amount.toLocaleString('ko-KR')}원`;
+    this.el.donationName.textContent = user;
+    this.el.donationAmount.textContent = won;
+    this.el.donationMsg.textContent = msg;
+    this.el.donation.classList.remove('hidden');
+    this.el.donation.classList.toggle('scare', scare);
+    this.donationTimer = 6;
+    this.chat(`${user} · ${won}`, msg, scare ? 'donate scare' : 'donate');
+
+    // 깜짝 연출: 큰 알림음 + 화면 번쩍임/흔들림 + TTS 낭독
+    Sound.donationAlert(scare);
+    const speaker = user === '???' ? '알 수 없는 시청자' : user;
+    Sound.speak(`${speaker}님, ${amount}원 후원. ${msg}`, scare ? { pitch: 0.1, rate: 0.7 } : {});
+    Game.shake = Math.max(Game.shake, scare ? 0.9 : 0.35);
+    const screen = this.el.donation.closest('#screen');
+    screen.classList.remove('flash', 'flash-scare');
+    void screen.offsetWidth; // 애니메이션 재시작
+    screen.classList.add(scare ? 'flash-scare' : 'flash');
+  },
+
+  surpriseDonation() {
+    if (!this.surpriseQueue.length) {
+      this.surpriseQueue = [...SURPRISE_DONATIONS].sort(() => Math.random() - 0.5);
+    }
+    const d = this.surpriseQueue.pop();
+    this.donate(d.user, d.amount, d.msg, { scare: d.scare });
+  },
+
+  addViewers(n) { this.viewerTarget += n; },
+
+  setRoom(name) { this.el.roomName.textContent = name; },
+
+  onHide(label) {
+    this.el.hideIndicator.textContent = `${label}에 숨는 중…  [E] 나오기`;
+    this.el.hideIndicator.classList.remove('hidden');
+  },
+
+  onUnhide() { this.el.hideIndicator.classList.add('hidden'); },
+
+  onMonsterAppear() {
+    this.toast('!!! 무언가 나타났다 !!!', 2);
+    Sound.stinger();
+    this.addViewers(800);
+    for (let i = 0; i < 3; i++) this.chat(pick(CHAT_USERS), pick(CHAT_LINES.chase));
+  },
+
+  onMonsterLeave() {
+    this.toast('발소리가 멀어졌다…');
+    this.chat(pick(CHAT_USERS), '와 살았다 ㅠㅠㅠ');
+  },
+
+  /** 잡힘: 화면 위 안내문을 모두 걷어내고 얼굴만 남긴다 (연출은 Game.renderCaught) */
+  onCaught() {
+    ['toast', 'donation', 'hideIndicator', 'camCapture', 'hudLeft'].forEach(k => this.el[k].classList.add('hidden'));
+    Quest.capturing = false;
+    if ('speechSynthesis' in window) speechSynthesis.cancel();
+    this.chat('SYSTEM', '신호가 불안정합니다...', 'system');
+  },
+
+  /* ---------------- 미션(채팅 고정) · 현재 목표 ---------------- */
+
+  renderMissions() {
+    this.el.missions.innerHTML = Quest.missions.map(m => {
+      const progress = m.id === 'monsterCam' && !m.done && m.progress > 0
+        ? ` <em>${m.progress.toFixed(1)}s</em>` : '';
+      const hint = m.done ? '' : ` <small>· ${m.hint}</small>`;
+      return `<li class="${m.done ? 'done' : ''}"><span>${m.done ? '■' : '□'}</span><span>${m.title}${progress}${hint}</span></li>`;
+    }).join('');
+  },
+
+  /** 방송 화면 왼쪽 위 "▶ 목표" 한 줄. 바뀔 때만 DOM 갱신 */
+  renderObjective(g) {
+    const step = Quest.currentStep(g);
+    const objective = step ? `▶ 목표: ${step.short}` : '';
+    if (this.el.objective.textContent !== objective) this.el.objective.textContent = objective;
+  },
+
+  /* ---------------- 타이틀 / 엔딩 ---------------- */
+
+  hideTitle() {
+    this.el.title.classList.add('hidden');
+    this.el.hudLeft.classList.remove('hidden');
+    this.chat('SYSTEM', '방송이 시작되었습니다!', 'system');
+  },
+
+  showEnding(type, stats) {
+    const e = ENDINGS[type];
+    this.el.ending.className = `screen-layer ${e.cls}`;
+    this.el.endingTag.textContent = e.tag;
+    this.el.endingTitle.textContent = e.title;
+    this.el.endingText.innerHTML = e.text.map(t => `<p>${t}</p>`).join('');
+    this.el.endingStats.innerHTML = [
+      ['최고 시청자', stats.viewers.toLocaleString('ko-KR') + '명'],
+      ['구출한 친구', `${stats.friends} / 2`],
+      ['시청자 미션', `${stats.missions} / ${stats.totalMissions}`],
+      // 비밀 문서는 찾았을 때만 존재를 드러낸다
+      stats.curseTruth && ['비밀 문서', '복원'],
+      ['방송 시간', stats.time],
+    ].filter(Boolean).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+    this.el.dialog.classList.add('hidden');
+    this.el.retryBtn.focus();
+  },
+
+  formatTime(sec) {
+    const s = Math.floor(sec);
+    return [s / 3600, (s % 3600) / 60, s % 60].map(v => String(Math.floor(v)).padStart(2, '0')).join(':');
+  },
+
+  /* ---------------- 매 프레임 ---------------- */
+
+  update(dt, g) {
+    const playing = g.state === 'play';
+    if (playing) this.recTime += dt;
+    this.el.recTime.textContent = this.formatTime(this.recTime);
+
+    // 대화 타자기 효과
+    if (this.current && this.typed < this.current.text.length) {
+      const before = Math.floor(this.typed);
+      this.typed = Math.min(this.current.text.length, this.typed + dt * 40);
+      const after = Math.floor(this.typed);
+      this.el.dialogText.textContent = this.current.text.slice(0, after);
+      // 새로 찍힌 글자가 공백·문장부호가 아니면 "삑" (스킵해서 한꺼번에 나온 경우는 무음)
+      const ch = this.current.text[after - 1];
+      if (after > before && after - before <= 3 && !/[\s.,!?…·'"()\-—~:]/.test(ch)) {
+        Sound.blip(this.current.name);
+      }
+    }
+
+    // 분위기에 따른 채팅 & 시청자 수
+    const m = g.monster;
+    const sameRoom = m.active && m.roomId === GameMap.currentId;
+    let mood = 'idle';
+    if (Heartbeat.active) mood = 'check';
+    else if (sameRoom && g.player.hidden) mood = 'hide';
+    else if (sameRoom && (m.state === 'chase' || m.state === 'grab')) mood = 'chase';
+    else if (m.pending || sameRoom) mood = 'scary';
+
+    if (playing && !this.current) {
+      this.chatTimer -= dt;
+      if (this.chatTimer <= 0) {
+        this.chat(pick(CHAT_USERS), pick(CHAT_LINES[mood]));
+        this.chatTimer = mood === 'chase' || mood === 'check' ? 0.3 + Math.random() * 0.5 : 1.6 + Math.random() * 2.6;
+      }
+      // 조용할 때만 불시 후원 (긴장이 풀린 순간을 노림)
+      this.surpriseTimer -= dt;
+      if (this.surpriseTimer <= 0 && mood === 'idle') {
+        this.surpriseDonation();
+        this.surpriseTimer = 45 + Math.random() * 45;
+      }
+      if (mood === 'chase') this.viewerTarget += dt * 45;
+      this.viewerTarget += (Math.random() - 0.48) * dt * 25;
+    }
+    this.viewers += (this.viewerTarget - this.viewers) * Math.min(1, dt * 2);
+    this.el.viewers.textContent = Math.round(this.viewers).toLocaleString('ko-KR');
+
+    if (playing) this.renderObjective(g);
+    // 미니게임 중엔 "[E] 나오기" 안내를 숨김 (E는 박동 입력, 하트와 겹침 방지)
+    if (playing) this.el.hideIndicator.classList.toggle('hidden', !g.player.hidden || Heartbeat.active);
+
+    // 타이머형 요소
+    if (this.toastTimer > 0 && (this.toastTimer -= dt) <= 0) this.el.toast.classList.add('hidden');
+    if (this.donationTimer > 0 && (this.donationTimer -= dt) <= 0) this.el.donation.classList.add('hidden');
+
+    // 괴물 촬영 표시
+    const cam = Quest.mission('monsterCam');
+    this.el.camCapture.classList.toggle('hidden', !Quest.capturing);
+    this.el.camProgress.textContent = cam.progress.toFixed(1);
+
+    // 위험도 (괴물과의 거리)
+    let danger = 0;
+    if (sameRoom) {
+      const d = Math.hypot(m.x - g.player.x, m.y - g.player.y);
+      danger = Math.max(0.15, 1 - d / (TILE * 10));
+    }
+    if (g.state === 'caught') danger = g.jumped ? 1 : 0;
+    this.el.danger.style.opacity = danger.toFixed(2);
+  },
+};
+
+function pick(arr) { return arr[(Math.random() * arr.length) | 0]; }
+
+function hashStr(s) {
+  let h = 0;
+  for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return h;
+}
+</script>
+  <script>
+/* ===== js/main.js ===== */
+/* =========================================================
+ * main.js — 입력 · 게임 루프 · 룸 전환 · 렌더링(조명/노이즈) · 초기화
+ * ========================================================= */
+const CAUGHT_STARE = 1.0;    // 잡힌 뒤 얼굴만 노려보는 시간(초)
+const CAUGHT_SCREAM = 3.6;   // 얼굴이 확 커지며 비명이 울리는 시간(초) → 이후 엔딩
+
+const GAME_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'Space', 'Enter'];
+
+const Input = {
+  held: new Set(),      // 누르고 있는 키
+  pressed: new Set(),   // 이번 프레임에 새로 눌린 키
+
+  any(...codes) { return codes.some(c => this.held.has(c)); },
+  get up() { return this.any('ArrowUp', 'KeyW'); },
+  get down() { return this.any('ArrowDown', 'KeyS'); },
+  get left() { return this.any('ArrowLeft', 'KeyA'); },
+  get right() { return this.any('ArrowRight', 'KeyD'); },
+  wasPressed(...codes) { return codes.some(c => this.pressed.has(c)); },
+  endFrame() { this.pressed.clear(); },
+};
+
+window.addEventListener('keydown', e => {
+  if (GAME_KEYS.includes(e.code) && e.target.tagName !== 'BUTTON') e.preventDefault();
+  if (!e.repeat) Input.pressed.add(e.code);
+  Input.held.add(e.code);
+});
+window.addEventListener('keyup', e => Input.held.delete(e.code));
+window.addEventListener('blur', () => Input.held.clear());
+
+const INTRO = [
+  { name: '', text: '10월 31일, 할로윈 밤. 산 중턱에 버려진 소문의 폐가.' },
+  { name: '지수', text: '와... 분위기 진짜 장난 아니다. 방송 켜졌어?' },
+  { name: '현우', text: '시청자 벌써 천 명 넘었어! 민우야, 카메라 잘 잡아.' },
+  { name: '', text: '쾅——!! 현관문이 저절로 닫히고, 손전등이 깜빡였다.' },
+  { name: '', text: '...다시 불이 들어왔을 때, 지수와 현우는 사라지고 없었다.' },
+  { name: '민우', text: '지, 지수야? 현우야?! ...장난치지 마!' },
+  { name: '', text: '[목표] 사라진 친구들을 찾고, 시청자 미션을 수행하며 폐가를 탈출하라.' },
+  { name: '', text: '이동: WASD / 방향키   ·   조사·숨기: E / Space   ·   반짝이는 곳을 조사해 보자.' },
+];
+
+const Game = {
+  canvas: null,
+  ctx: null,
+  light: null,
+  lightCtx: null,
+  state: 'title',      // title | play | caught | ending
+  time: 0,
+  last: 0,
+  shake: 0,
+  fade: 0,
+  caughtTime: 0,
+  jumped: false,
+  endType: null,
+  player: null,
+  monster: null,
+
+  init() {
+    this.canvas = document.getElementById('game');
+    this.ctx = this.canvas.getContext('2d');
+    this.light = document.createElement('canvas');
+    this.light.width = this.canvas.width;
+    this.light.height = this.canvas.height;
+    this.lightCtx = this.light.getContext('2d');
+
+    this.player = new Player();
+    this.monster = new Monster();
+    GameMap.currentId = 'hall';
+    this.player.setTile(9.5, 12);
+
+    Quest.init();
+    UI.init();
+    UI.setRoom(GameMap.room.name);
+
+    requestAnimationFrame(ts => this.loop(ts));
+  },
+
+  start() {
+    if (this.state !== 'title') return;
+    this.state = 'play';
+    Sound.unlock();
+    UI.hideTitle();
+    UI.say(INTRO, () => UI.chat('귀신잡는용', '헐 친구들 어디감?? 연출 아니지??'));
+  },
+
+  /** 엔딩 → 같은 페이지에서 처음부터 다시 (페이지 새로고침 없이) */
+  restart() {
+    if (this.state !== 'ending') return;
+    Input.pressed.clear();
+    Heartbeat.active = false;
+    this.player = new Player();
+    this.monster = new Monster();
+    GameMap.currentId = 'hall';
+    this.player.setTile(9.5, 12);
+    this.endType = null;
+    this.jumped = false;
+    this.caughtTime = 0;
+    this.shake = 0;
+    this.fade = 1;
+    Quest.init();
+    UI.reset(this);
+    this.state = 'title';
+    this.start();
+  },
+
+  loop(ts) {
+    const dt = Math.min(0.05, (ts - this.last) / 1000 || 0);
+    this.last = ts;
+    this.update(dt);
+    this.render();
+    Input.endFrame();
+    requestAnimationFrame(t => this.loop(t));
+  },
+
+  update(dt) {
+    this.time += dt;
+    const interact = Input.wasPressed('KeyE', 'Space', 'Enter');
+
+    if (this.state === 'title') {
+      if (interact) this.start();
+    } else if (this.state === 'play') {
+      if (UI.isBlocking()) {
+        if (interact) UI.advance();
+      } else if (Heartbeat.active) {
+        // 심장박동 미니게임 중: 괴물·플레이어 정지, Q/E는 미니게임 입력
+        Heartbeat.update(dt, Input);
+      } else {
+        this.player.update(dt, Input);
+        if (interact) this.player.tryInteract(this);
+
+        const door = !this.player.hidden && GameMap.doorAt(this.player.tx, this.player.ty);
+        if (door) this.changeRoom(door);
+
+        this.monster.update(dt, this.player, this);
+        Quest.update(dt, this);
+      }
+    } else if (this.state === 'ending') {
+      // 도망치며 연타하던 E가 엔딩을 바로 넘기지 않도록 1초 대기
+      if (interact && this.time - this.endedAt > 1) this.restart();
+    } else if (this.state === 'caught') {
+      this.caughtTime += dt;
+      if (!this.jumped && this.caughtTime >= CAUGHT_STARE) {
+        this.jumped = true;
+        this.shake = 1.6;
+        Sound.jumpscare();
+      }
+      if (this.caughtTime >= CAUGHT_STARE + CAUGHT_SCREAM) this.end('caught');
+    }
+
+    this.shake = Math.max(0, this.shake - dt);
+    this.fade = Math.max(0, this.fade - dt * 3);
+    UI.update(dt, this);
+    Sound.update(dt, this);
+  },
+
+  changeRoom(door) {
+    GameMap.currentId = door.to;
+    this.player.setTile(door.spawn[0], door.spawn[1]);
+    this.fade = 1;
+    UI.setRoom(GameMap.room.name);
+    this.monster.onPlayerChangeRoom(door.to, door.spawn);
+    Quest.onEnterRoom(door.to, this);
+  },
+
+  onCaught() {
+    if (this.state !== 'play') return;
+    this.state = 'caught';
+    this.caughtTime = 0;
+    this.jumped = false;
+    this.shake = 0;
+    UI.onCaught();
+  },
+
+  end(type) {
+    if (this.state === 'ending') return;
+    this.state = 'ending';
+    this.endType = type;
+    this.endedAt = this.time;
+    UI.showEnding(type, {
+      viewers: Math.round(UI.viewers),
+      friends: Quest.rescuedCount(),
+      missions: Quest.missionsDone(),
+      totalMissions: Quest.missions.length,
+      curseTruth: !!Quest.flags.curseTruth,
+      time: UI.formatTime(UI.recTime),
+    });
+  },
+
+  /* ---------------- 렌더링 ---------------- */
+
+  render() {
+    if (this.state === 'caught' || this.endType === 'caught') return this.renderCaught();
+    const { ctx, canvas, player: p, monster: m } = this;
+    ctx.save();
+    if (this.shake > 0) {
+      ctx.translate((Math.random() - 0.5) * this.shake * 12, (Math.random() - 0.5) * this.shake * 12);
+    }
+
+    ctx.drawImage(GameMap.getRoomCanvas(), 0, 0);
+    Quest.drawWorld(ctx, this);
+
+    // y값 기준 깊이 정렬
+    const sameRoom = m.active && m.roomId === GameMap.currentId;
+    if (sameRoom && m.y < p.y) { m.draw(ctx); p.draw(ctx); }
+    else { p.draw(ctx); if (sameRoom) m.draw(ctx); }
+
+    this.renderLighting(ctx);
+    if (sameRoom) m.drawEyes(ctx);
+    Quest.drawOverlay(ctx, this);
+    ctx.restore();
+
+    this.renderNoise(ctx, sameRoom ? Math.hypot(m.x - p.x, m.y - p.y) : Infinity);
+    Heartbeat.draw(ctx, canvas.width, canvas.height);
+
+    if (this.fade > 0) {
+      ctx.fillStyle = `rgba(0,0,0,${this.fade})`;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    if (this.state === 'title') {
+      ctx.fillStyle = 'rgba(0,0,0,.6)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+  },
+
+  /** 잡힘 연출: 정적 속에 얼굴만 노려보다가 → 화면 가득 확 커지며 비명 */
+  renderCaught() {
+    const { ctx } = this;
+    const { width: W, height: H } = this.canvas;
+    const t = this.caughtTime;
+    const ending = this.state === 'ending';
+
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+
+    let scale;
+    let jitter;
+    if (!this.jumped) {
+      scale = 2.3 + t * 0.4;               // 천천히 다가옴 (얼굴 원본 64px 기준)
+      jitter = Math.random() < 0.15 ? 1 : 0;
+    } else {
+      const since = ending ? CAUGHT_SCREAM : t - CAUGHT_STARE;
+      const k = Math.min(1, since / 0.08);
+      scale = 2.7 + k * 7.5 + since * 0.7; // 0.08초 만에 화면을 덮고, 비명 내내 계속 다가옴
+      jitter = ending ? 0 : 6 + since * 3;
+    }
+
+    const face = Monster.face(this.jumped);
+    const w = face.width * scale;
+    const h = face.height * scale;
+    ctx.save();
+    if (this.shake > 0) ctx.translate((Math.random() - 0.5) * this.shake * 30, (Math.random() - 0.5) * this.shake * 30);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(face,
+      W / 2 - w / 2 + (Math.random() - 0.5) * jitter * 2,
+      H / 2 - h / 2 - (this.jumped ? h * 0.12 : 0) + (Math.random() - 0.5) * jitter * 2, // 찢어진 입이 화면에 들어오게 위로
+      w, h);
+    ctx.restore();
+
+    if (!this.jumped) {
+      // 어둠 속에서 얼굴 윤곽만 떠오르게
+      const r = Math.min(W, H) * 0.32;
+      const g = ctx.createRadialGradient(W / 2, H / 2, r * 0.25, W / 2, H / 2, r);
+      g.addColorStop(0, 'rgba(0,0,0,0)');
+      g.addColorStop(1, 'rgba(0,0,0,.95)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+    } else if (!ending) {
+      ctx.fillStyle = `rgba(255, 0, 0, ${Math.random() * 0.4})`;
+      ctx.fillRect(0, 0, W, H);
+      // 스태틱 화면: 지직거리는 회색 점·띠
+      for (let i = 0; i < 140; i++) {
+        const v = (Math.random() * 255) | 0;
+        ctx.fillStyle = `rgba(${v},${v},${v},${0.25 + Math.random() * 0.35})`;
+        ctx.fillRect(Math.random() * W, Math.random() * H, 2 + Math.random() * 30, 2);
+      }
+      // 조명이 나가듯 순간적으로 암전
+      if (Math.random() < 0.08) {
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, W, H);
+      }
+    }
+    this.renderNoise(ctx, this.jumped && !ending ? 0 : Infinity);
+    if (ending) {
+      ctx.fillStyle = 'rgba(0,0,0,.55)';
+      ctx.fillRect(0, 0, W, H);
+    }
+  },
+
+  /** 어둠 + 손전등(원형 후광 + 부채꼴 빛) */
+  renderLighting(ctx) {
+    const l = this.lightCtx;
+    const p = this.player;
+    const { width: W, height: H } = this.light;
+    const flicker = Math.random() < 0.03 ? 0.06 : 0;
+
+    l.globalCompositeOperation = 'source-over';
+    l.clearRect(0, 0, W, H);
+    l.fillStyle = `rgba(3, 2, 8, ${0.88 + flicker})`;
+    l.fillRect(0, 0, W, H);
+
+    l.globalCompositeOperation = 'destination-out';
+    const r = p.hidden ? 44 : 78;
+    let g = l.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+    g.addColorStop(0, 'rgba(0,0,0,1)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    l.fillStyle = g;
+    l.beginPath();
+    l.arc(p.x, p.y, r, 0, Math.PI * 2);
+    l.fill();
+
+    if (!p.hidden) {
+      const len = 250;
+      const spread = 0.55;
+      g = l.createRadialGradient(p.x, p.y, 10, p.x, p.y, len);
+      g.addColorStop(0, 'rgba(0,0,0,.95)');
+      g.addColorStop(0.7, 'rgba(0,0,0,.6)');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      l.fillStyle = g;
+      l.beginPath();
+      l.moveTo(p.x, p.y);
+      l.arc(p.x, p.y, len, p.lightAngle - spread, p.lightAngle + spread);
+      l.closePath();
+      l.fill();
+    }
+    ctx.drawImage(this.light, 0, 0);
+  },
+
+  /** 캠코더 노이즈. 괴물이 가까울수록 화면이 찢어진다 */
+  renderNoise(ctx, monsterDist) {
+    const { width: W, height: H } = this.canvas;
+    for (let i = 0; i < 5; i++) {
+      ctx.fillStyle = `rgba(255,255,255,${Math.random() * 0.05})`;
+      ctx.fillRect(0, Math.random() * H, W, 1 + Math.random() * 2);
+    }
+    const intensity = Math.max(0, 1 - monsterDist / (TILE * 6));
+    if (Math.random() < intensity * 0.6) {
+      const slices = 1 + Math.floor(intensity * 4);
+      for (let i = 0; i < slices; i++) {
+        const y = Math.random() * H;
+        const h = 4 + Math.random() * 18;
+        ctx.drawImage(this.canvas, 0, y, W, h, (Math.random() - 0.5) * 30 * intensity, y, W, h);
+      }
+    }
+  },
+};
+
+window.addEventListener('DOMContentLoaded', () => Game.init());
+</script>
+</body>
+</html>
